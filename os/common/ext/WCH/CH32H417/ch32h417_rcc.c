@@ -680,6 +680,9 @@ void RCC_HBPeriphClockCmd(uint32_t RCC_HBPeriph, FunctionalState NewState)
     {
         RCC->HBPCENR &= ~RCC_HBPeriph;
     }
+    /* CH32H417 patch: the V5F core is out-of-order (RM ch4.1), order
+       this gate write before the caller accesses the peripheral. */
+    __asm volatile ("fence iorw, iorw" : : : "memory");
 }
 
 /*********************************************************************
@@ -729,6 +732,9 @@ void RCC_HB2PeriphClockCmd(uint32_t RCC_HB2PCENR, FunctionalState NewState)
     {
         RCC->HB2PCENR &= ~ RCC_HB2PCENR;
     }
+    /* CH32H417 patch: the V5F core is out-of-order (RM ch4.1), order
+       this gate write before the caller accesses the peripheral. */
+    __asm volatile ("fence iorw, iorw" : : : "memory");
 }
 
 /*********************************************************************
@@ -782,6 +788,9 @@ void RCC_HB1PeriphClockCmd(uint32_t RCC_HB1PCENR, FunctionalState NewState)
     {
         RCC->HB1PCENR &= ~RCC_HB1PCENR;
     }
+    /* CH32H417 patch: the V5F core is out-of-order (RM ch4.1), order
+       this gate write before the caller accesses the peripheral. */
+    __asm volatile ("fence iorw, iorw" : : : "memory");
 }
 
 /*********************************************************************
@@ -818,6 +827,10 @@ void RCC_HBPeriphResetCmd(uint32_t RCC_HBPeriph, FunctionalState NewState)
     {
         RCC->HBRSTR &= ~RCC_HBPeriph;
     }
+    /* CH32H417 patch: the V5F core is out-of-order (RM ch4.1), order
+       this reset write before the caller keeps configuring (pulses
+       built from ENABLE+DISABLE calls need both edges ordered). */
+    __asm volatile ("fence iorw, iorw" : : : "memory");
 }
 
 /*********************************************************************
@@ -867,6 +880,10 @@ void RCC_HB2PeriphResetCmd(uint32_t RCC_HB2Periph, FunctionalState NewState)
     {
         RCC->HB2PRSTR &= ~RCC_HB2Periph;
     }
+    /* CH32H417 patch: the V5F core is out-of-order (RM ch4.1), order
+       this reset write before the caller keeps configuring (pulses
+       built from ENABLE+DISABLE calls need both edges ordered). */
+    __asm volatile ("fence iorw, iorw" : : : "memory");
 }
 
 /*********************************************************************
@@ -920,6 +937,10 @@ void RCC_HB1PeriphResetCmd(uint32_t RCC_HB1Periph, FunctionalState NewState)
     {
         RCC->HB1PRSTR &= ~RCC_HB1Periph;
     }
+    /* CH32H417 patch: the V5F core is out-of-order (RM ch4.1), order
+       this reset write before the caller keeps configuring (pulses
+       built from ENABLE+DISABLE calls need both edges ordered). */
+    __asm volatile ("fence iorw, iorw" : : : "memory");
 }
 
 /*********************************************************************
