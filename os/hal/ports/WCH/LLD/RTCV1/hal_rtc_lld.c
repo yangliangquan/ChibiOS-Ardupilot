@@ -48,11 +48,36 @@ RTCDriver RTCD1;
 
 #if (CH32H417_RTC_USE_RTC1 == TRUE) || defined(__DOXYGEN__)
 /**
- * @brief   Waits for the RTC registers to be synchronized.
+ * @brief   Bounded poll limit (~0.3s at HCLK=400MHz).
+ * @note    All RTC flag waits are bounded: a missing RTC clock must
+ *          never wedge the boot or an ISR (the vendor helpers loop
+ *          forever on a dead clock).
  */
-static void rtc_bus_sync(void) {
+#define RTC_SPIN_LIMIT       ((uint32_t)40000000U)
 
-  while (RTC_GetFlagStatus(RTC_FLAG_RSF) == RESET) {
+/**
+ * @brief   Waits (bounded) for the RTC registers to be synchronized.
+ *
+ * @return              false on timeout.
+ */
+static bool rtc_bus_sync(void) {
+  uint32_t spin = RTC_SPIN_LIMIT;
+
+  while ((RTC_GetFlagStatus(RTC_FLAG_RSF) == RESET) && (spin > 0U)) {
+    spin--;
+  }
+  return (RTC_GetFlagStatus(RTC_FLAG_RSF) != RESET);
+}
+
+/**
+ * @brief   Waits (bounded) until the last RTC write finished.
+ */
+static void rtc_wait_last_task(void) {
+  uint32_t spin = RTC_SPIN_LIMIT;
+
+  while (((RTC->CTLRL & RTC_FLAG_RTOFF) == (uint16_t)RESET) &&
+         (spin > 0U)) {
+    spin--;
   }
 }
 
@@ -89,7 +114,7 @@ static void rtc_decode(uint32_t tv_sec,
 static void rtc_get_sec_msec(uint32_t *tv_sec, uint32_t *tv_msec) {
   uint32_t frac;
 
-  rtc_bus_sync();
+  (void)rtc_bus_sync();
 
   /* Stable seconds read. */
   do {
@@ -121,7 +146,7 @@ OSAL_IRQ_HANDLER(RTC_IRQHandler) {
 
   OSAL_IRQ_PROLOGUE();
 
-  rtc_bus_sync();
+  (void)rtc_bus_sync();
 
   if (RTC_GetITStatus(RTC_IT_SEC) != RESET) {
     RTC_ClearITPendingBit(RTC_IT_SEC);
@@ -164,16 +189,29 @@ void rtc_lld_init(void) {
   /* RTC pointer initialization.*/
   RTCD1.rtc = RTC;
 
+  /* Unlock the backup domain first: RCC_BDCTLR's RTCSEL/RTCEN are
+     write protected after reset until PWR_CTLR_DBP is set (RM note
+     below the BDCTLR description). Without this the clock selection
+     below is silently dropped and the RSF wait never completes -
+     observed as a hang inside halInit() on hardware. */
+  RCC_HB1PeriphClockCmd(RCC_HB1Periph_PWR, ENABLE);
+  PWR->CTLR |= PWR_CTLR_DBP;
+
   /* LSI based RTC clock, no external crystal required. */
   RCC_LSICmd(ENABLE);
   RCC_RTCCLKConfig(RCC_RTCCLKSource_LSI);
   RCC_RTCCLKCmd(ENABLE);
 
-  RTC_WaitForSynchro();
+  /* Clear RSF and wait (bounded) for the RTC domain to synchronize;
+     RSF only sets once the RTC clock is actually running. */
+  RTC->CTLRL &= (uint16_t)~RTC_FLAG_RSF;
+  if (!rtc_bus_sync()) {
+    osalDbgAssert(false, "RTC clock not running (BDCTLR/LSI)");
+  }
 
   /* One second time base (the prescaler is reloaded on every boot,
      time keeping does not persist across resets on this platform). */
-  RTC_WaitForLastTask();
+  rtc_wait_last_task();
   RTC_EnterConfigMode();
   RTC_SetPrescaler(CH32H417_RTCCLK - 1U);
   RTC_ExitConfigMode();
@@ -251,7 +289,7 @@ void rtc_lld_get_alarm(RTCDriver *rtcp,
   (void)rtcp;
   (void)alarm_number;
 
-  rtc_bus_sync();
+  (void)rtc_bus_sync();
   alarmspec->tv_sec = ((uint32_t)RTC->ALRMH << 16) | RTC->ALRML;
 }
 
