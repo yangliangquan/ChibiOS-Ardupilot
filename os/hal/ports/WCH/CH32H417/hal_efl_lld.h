@@ -44,14 +44,14 @@
 
 /**
  * @brief   Start address of the managed flash partition.
- * @note    XIP code-flash alias of the V5F image partition, taken
- *          from the WCH EVT layout (V3F owns 0x00000000..0x00010000,
- *          V5F owns 0x00010000..0x00030000). Provisional, to be
- *          confirmed against the reference manual when the storage
- *          partition is sized for ArduPilot.
+ * @note    Storage partition carved from the top of the 960KB
+ *          CodeFlash: XIP alias 0x000D0000..0x000F0000, programming
+ *          alias below. Matches the flash1 reservation in
+ *          ld/CH32H417_FLASH.ld; resize both together when the
+ *          ArduPilot storage needs are sized.
  */
 #if !defined(CH32H417_EFL_BASE_ADDR) || defined(__DOXYGEN__)
-#define CH32H417_EFL_BASE_ADDR             0x08010000U
+#define CH32H417_EFL_BASE_ADDR             0x080D0000U
 #endif
 
 /**
