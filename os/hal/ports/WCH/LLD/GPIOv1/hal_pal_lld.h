@@ -97,8 +97,12 @@ typedef uint32_t ioline_t;
 
 /**
  * @brief   Port Identifier.
+ * @note    The port identifier is the peripheral base address, kept as
+ *          a pointer type so that the standard @p palSetPadMode(GPIOx,
+ *          ...) style calls compile without integer-conversion
+ *          warnings; the implementation casts to @p GPIO_TypeDef *.
  */
-typedef uint32_t ioportid_t;
+typedef GPIO_TypeDef *ioportid_t;
 
 /**
  * @brief   Type of a pad identifier.

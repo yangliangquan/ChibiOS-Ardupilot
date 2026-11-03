@@ -407,7 +407,10 @@ void _port_thread_start(void);
 /**
  * @brief   Port-related initialization code.
  */
-static inline void port_init(os_instance_t *oip){}
+static inline void port_init(os_instance_t *oip) {
+
+  (void)oip;
+}
 
 /**
  * @brief   Returns a word encoding the current interrupts status.

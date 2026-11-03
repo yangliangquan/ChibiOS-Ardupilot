@@ -61,6 +61,8 @@ void trng_lld_init(void) {
  */
 void trng_lld_start(TRNGDriver *trngp) {
 
+  (void)trngp;
+
   RNG_Cmd(ENABLE);
 }
 
@@ -70,6 +72,8 @@ void trng_lld_start(TRNGDriver *trngp) {
  * @notapi
  */
 void trng_lld_stop(TRNGDriver *trngp) {
+
+  (void)trngp;
 
   RNG_Cmd(DISABLE);
 }
@@ -86,6 +90,8 @@ void trng_lld_stop(TRNGDriver *trngp) {
 bool trng_lld_generate(TRNGDriver *trngp, size_t size, uint8_t *out) {
   size_t i;
   uint32_t word = 0U;
+
+  (void)trngp;
 
   for (i = 0U; i < size; i++) {
 

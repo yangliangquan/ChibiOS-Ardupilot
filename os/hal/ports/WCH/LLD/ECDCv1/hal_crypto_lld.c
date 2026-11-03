@@ -209,6 +209,8 @@ void cry_lld_init(void) {
  */
 void cry_lld_start(CRYDriver *cryp) {
 
+  (void)cryp;
+
   RCC_HB2PeriphClockCmd(RCC_HB2Periph_ECDC, ENABLE);
 }
 

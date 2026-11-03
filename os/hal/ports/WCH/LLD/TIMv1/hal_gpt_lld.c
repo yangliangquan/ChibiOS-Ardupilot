@@ -284,7 +284,9 @@ void gpt_lld_stop(GPTDriver *gptp) {
 void gpt_lld_start_timer(GPTDriver *gptp, gptcnt_t period) {
   TIM_TypeDef *t = gptp->tim;
 
-  osalDbgAssert((period > 0U) && (period <= 0xFFFFU), "invalid period");
+  /* gptcnt_t is 16-bit, matching the 16-bit timers, so the type
+     itself enforces the upper bound; only zero has to be rejected. */
+  osalDbgAssert(period > 0U, "invalid period");
 
   t->ATRLR = (uint16_t)(period - 1U);
   t->CNT = 0;

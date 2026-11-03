@@ -66,6 +66,8 @@ void dac_lld_init(void) {
 msg_t dac_lld_start(DACDriver *dacp) {
   DAC_InitTypeDef init;
 
+  (void)dacp;
+
   RCC_HB1PeriphClockCmd(RCC_HB1Periph_DAC, ENABLE);
 
   DAC_StructInit(&init);
@@ -88,6 +90,8 @@ msg_t dac_lld_start(DACDriver *dacp) {
  */
 void dac_lld_stop(DACDriver *dacp) {
 
+  (void)dacp;
+
   DAC_Cmd(DAC_Channel_1, DISABLE);
   DAC_Cmd(DAC_Channel_2, DISABLE);
 }
@@ -102,6 +106,7 @@ msg_t dac_lld_put_channel(DACDriver *dacp,
                           dacsample_t sample) {
 
   osalDbgAssert(channel < 2U, "invalid channel");
+  (void)dacp;
 
   if (channel == 0U) {
     DAC_SetChannel1Data(DAC_Align_12b_R, sample);
@@ -122,6 +127,8 @@ msg_t dac_lld_put_channel(DACDriver *dacp,
  */
 msg_t dac_lld_start_conversion(DACDriver *dacp) {
 
+  (void)dacp;
+
   /* Buffered conversions need DMA, not available yet. */
   return HAL_RET_NO_RESOURCE;
 }
@@ -132,6 +139,8 @@ msg_t dac_lld_start_conversion(DACDriver *dacp) {
  * @notapi
  */
 void dac_lld_stop_conversion(DACDriver *dacp) {
+
+  (void)dacp;
 }
 
 #endif /* HAL_USE_DAC == TRUE */

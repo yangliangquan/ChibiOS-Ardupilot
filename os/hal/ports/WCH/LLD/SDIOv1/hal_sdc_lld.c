@@ -480,7 +480,7 @@ static void sdmmc_arm_read(SDCDriver *sdcp, uint8_t *buf,
 /**
  * @brief   Arms a write transfer (command is issued before this).
  */
-static void sdmmc_arm_write(SDCDriver *sdcp, uint8_t *buf,
+static void sdmmc_arm_write(SDCDriver *sdcp, const uint8_t *buf,
                             uint32_t blocksize, uint32_t blocks) {
 
   SDMMC->INT_EN  = 0U;
@@ -1311,6 +1311,7 @@ bool sdc_lld_sync(SDCDriver *sdcp) {
  */
 bool sdc_lld_is_card_inserted(SDCDriver *sdcp) {
 
+  (void)sdcp;
   return (bool)CH32H417_SDC_IS_CARD_INSERTED(sdcp);
 }
 
@@ -1321,6 +1322,7 @@ bool sdc_lld_is_card_inserted(SDCDriver *sdcp) {
  */
 bool sdc_lld_is_write_protected(SDCDriver *sdcp) {
 
+  (void)sdcp;
   return (bool)CH32H417_SDC_IS_WRITE_PROTECTED(sdcp);
 }
 

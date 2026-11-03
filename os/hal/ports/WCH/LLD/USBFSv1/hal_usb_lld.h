@@ -100,6 +100,25 @@
 #define USB_MAX_ENDPOINTS                   15
 
 /**
+ * @brief   Status stage handling method.
+ * @note    The status stage is generated in software by the generic
+ *          driver (the hardware performs no implicit status stage).
+ */
+#define USB_EP0_STATUS_STAGE                USB_EP0_STATUS_STAGE_SW
+
+/**
+ * @brief   Address change timing.
+ * @details The device changes its address only after the status
+ *          packet of the SET_ADDRESS request has completed.
+ */
+#define USB_SET_ADDRESS_MODE                USB_LATE_SET_ADDRESS
+
+/**
+ * @brief   Method for set address acknowledge.
+ */
+#define USB_SET_ADDRESS_ACK_HANDLING        USB_SET_ADDRESS_ACK_SW
+
+/**
  * @brief   Type of an IN endpoint state structure.
  */
 typedef struct {
