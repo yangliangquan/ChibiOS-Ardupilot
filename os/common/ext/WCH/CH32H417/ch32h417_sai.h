@@ -237,7 +237,7 @@ typedef struct
 #define SAI_FIFOStatus_3QuartersFull    ((uint32_t)0x00040000)
 #define SAI_FIFOStatus_Full             ((uint32_t)0x00050000)
 
-void SAI_DeInit();
+void SAI_DeInit(void);
 void SAI_Init(SAI_Block_TypeDef* SAI_Block_x, SAI_InitTypeDef* SAI_InitStruct);
 void SAI_FrameInit(SAI_Block_TypeDef* SAI_Block_x, SAI_FrameInitTypeDef* SAI_FrameInitStruct);
 void SAI_SlotInit(SAI_Block_TypeDef* SAI_Block_x, SAI_SlotInitTypeDef* SAI_SlotInitStruct);

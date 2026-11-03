@@ -23,7 +23,7 @@
  *                     
  * @return  none
  */
-void SAI_DeInit()
+void SAI_DeInit(void)
 {
     RCC_HB2PeriphResetCmd(RCC_HB2Periph_SAI, ENABLE);
     RCC_HB2PeriphResetCmd(RCC_HB2Periph_SAI, DISABLE);
