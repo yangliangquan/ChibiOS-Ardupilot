@@ -195,19 +195,24 @@ void rtc_lld_init(void) {
      bus clock. Without both, the clock selection below is silently
      dropped - observed as a hang inside halInit() on hardware. */
   RCC_HB1PeriphClockCmd(RCC_HB1Periph_PWR | RCC_HB1Periph_BKP, ENABLE);
+  CH32H417_DSB();
   PWR->CTLR |= PWR_CTLR_DBP;
+  CH32H417_DSB();
 
   /* The backup-domain bits survive every system reset (RM: only BDRST
      or a BKP reset clears them), so pulse BDRST to drop a stale
      RTCSEL - a board previously configured for LSE would otherwise
      keep waiting for a crystal that is not fitted. */
   RCC->BDCTLR |= RCC_BDRST;
+  CH32H417_DSB();
   RCC->BDCTLR &= ~RCC_BDRST;
+  CH32H417_DSB();
 
   /* LSI based RTC clock, no external crystal required: enable it and
      wait for ITS ready flag (RSTSCKR.LSIRDY - nothing here ever
      looks at LSE). */
   RCC_LSICmd(ENABLE);
+  CH32H417_DSB();
   {
     uint32_t spin = RTC_SPIN_LIMIT;
 
@@ -216,9 +221,15 @@ void rtc_lld_init(void) {
     }
   }
   osalDbgAssert((RCC->RSTSCKR & RCC_LSIRDY) != 0U, "LSI failed to start");
+  CH32H417_DSB();
 
   RCC_RTCCLKConfig(RCC_RTCCLKSource_LSI);
+  /* The next call does a read-modify-write of the same register: the
+     earlier field write must have reached the device first or it is
+     silently lost. */
+  CH32H417_DSB();
   RCC_RTCCLKCmd(ENABLE);
+  CH32H417_DSB();
 
   /* Readback guard: RTCSEL must have landed as LSI (0b10), not LSE
      or none - catches a silently dropped write on hardware. */
@@ -228,6 +239,7 @@ void rtc_lld_init(void) {
   /* Clear RSF and wait (bounded) for the RTC domain to synchronize;
      RSF only sets once the RTC clock is actually running. */
   RTC->CTLRL &= (uint16_t)~RTC_FLAG_RSF;
+  CH32H417_DSB();
   if (!rtc_bus_sync()) {
     osalDbgAssert(false, "RTC clock not running (BDCTLR/LSI)");
   }
@@ -235,12 +247,19 @@ void rtc_lld_init(void) {
   /* One second time base (the prescaler is reloaded on every boot,
      time keeping does not persist across resets on this platform). */
   rtc_wait_last_task();
+  CH32H417_DSB();
   RTC_EnterConfigMode();
+  CH32H417_DSB();
   RTC_SetPrescaler(CH32H417_RTCCLK - 1U);
+  /* The counter reload must reach the RTC before the CNF flag is
+     cleared, otherwise the exit commits stale values. */
+  CH32H417_DSB();
   RTC_ExitConfigMode();
+  CH32H417_DSB();
 
   /* All interrupts initially disabled.*/
   RTC_ITConfig(RTC_IT_OW | RTC_IT_ALR | RTC_IT_SEC, DISABLE);
+  CH32H417_DSB();
 
   /* Callback initially disabled.*/
   RTCD1.callback = NULL;

@@ -107,6 +107,20 @@
  */
 #define hal_lld_get_clock_point(clkpt)      0U
 
+/**
+ * @brief   Full memory barrier (fence iorw,iorw).
+ * @details The CH32H417 V5F core is dual-issue and out-of-order (RM
+ *          ch4.1): Device write buffering and clock-domain crossings
+ *          (RCC gate -> peripheral, PWR -> backup domain, oscillator
+ *          -> RTC) do not keep program order on their own. Use it
+ *          after register writes that later reads or writes in other
+ *          blocks must observe: flag polls and read-modify-write
+ *          sequences, clock source switches, unlock-then-configure
+ *          sequences. crt0 uses the separate fence.i for the
+ *          instruction stream after code copies.
+ */
+#define CH32H417_DSB() __asm volatile ("fence iorw, iorw" : : : "memory")
+
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/

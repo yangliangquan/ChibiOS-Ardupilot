@@ -507,6 +507,7 @@ void usb_lld_start(USBDriver *usbp) {
        source select and divider.*/
 #if CH32H417_USB_SETUP_USBHSPLL
     RCC_USBHS_PLLCmd(ENABLE);
+    CH32H417_DSB();
     {
       unsigned spin = 1000000U;
       while ((RCC_GetFlagStatus(RCC_FLAG_USBHSPLLRDY) == RESET) &&
@@ -517,9 +518,12 @@ void usb_lld_start(USBDriver *usbp) {
 #endif
     RCC_USBFSCLKConfig(CH32H417_USBFS_CLK_SRC);
     RCC_USBFS48ClockSourceDivConfig(CH32H417_USBFS_CLK_DIV);
+    CH32H417_DSB();
 
     /* Peripheral clock (HBPCENR.OTGFSEN/RCC_USBOTGEN). */
     RCC->HBPCENR |= RCC_USBOTGEN;
+    /* Order the gate commit before the first USBFSD register access. */
+    CH32H417_DSB();
 
     /* Device physical port: full/low speed, internal pull-down
        disabled (device uses the SYS_CTRL pull-up), port enabled,
@@ -571,6 +575,9 @@ void usb_lld_reset(USBDriver *usbp) {
   /* Clear all pending flags, device address zero. */
   USBFSD->INT_FG  = 0xFFU;
   USBFSD->DEV_ADDR = 0U;
+  /* The clear must be committed before interrupt sources are enabled
+     below, otherwise a stale flag could fire immediately. */
+  CH32H417_DSB();
 
   /* Bus reset, transfer and suspend sources. */
   USBFSD->INT_EN = UIF_BUS_RST | UIF_TRANSFER | UIF_SUSPEND;

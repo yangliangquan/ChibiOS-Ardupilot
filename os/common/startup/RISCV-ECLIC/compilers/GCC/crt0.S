@@ -261,6 +261,11 @@ endbloop:
     call    __init_ram_areas
 #endif
 
+    /* All RAM images (data/bss/ram areas) are in place: order the
+       out-of-order V5F core's buffered stores before any C code runs
+       from them (RM ch4.1 recommends explicit fences). */
+    fence   iorw, iorw
+
     /* Late initialization..*/
     call    __late_init
 

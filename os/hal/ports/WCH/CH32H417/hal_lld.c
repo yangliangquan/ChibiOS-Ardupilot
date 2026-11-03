@@ -68,6 +68,7 @@ void ch32h417_clock_init(void) {
      The masks below are the vendor's literal values. */
   RCC->CTLR |= (uint32_t)0x00000001;
   RCC->CFGR0 &= (uint32_t)0x305C0000;
+  CH32H417_DSB();
   while ((RCC->CFGR0 & (uint32_t)RCC_SWS) != (uint32_t)0x00) {
   }
   RCC->CFGR0 &= (uint32_t)0xFFBFFFFF;
@@ -87,6 +88,7 @@ void ch32h417_clock_init(void) {
     uint32_t hse_status;
 
     RCC->CTLR |= (uint32_t)RCC_HSEON;
+    CH32H417_DSB();
     do {
       hse_status = RCC->CTLR & RCC_HSERDY;
       start_up_counter++;
@@ -101,17 +103,20 @@ void ch32h417_clock_init(void) {
       RCC->PLLCFGR |= (uint32_t)RCC_PLL_SRC_DIV1;
       RCC->PLLCFGR &= (uint32_t)~RCC_PLLSRC;
       RCC->PLLCFGR |= (uint32_t)RCC_PLLSRC_HSE;
+      CH32H417_DSB();
       while ((RCC->PLLCFGR & (uint32_t)RCC_PLLSRC) !=
              (uint32_t)RCC_PLLSRC_HSE) {
       }
 
       RCC->CTLR |= RCC_PLLON;
+      CH32H417_DSB();
       while ((RCC->CTLR & RCC_PLLRDY) != (uint32_t)RCC_PLLRDY) {
       }
 
       /* Release the system PLL selector until the tree is ready. */
       RCC->PLLCFGR &= (uint32_t)~RCC_SYSPLL_GATE;
       RCC->PLLCFGR &= (uint32_t)~RCC_SYSPLL_SEL;
+      CH32H417_DSB();
       while ((RCC->PLLCFGR & (uint32_t)RCC_SYSPLL_SEL) != (uint32_t)0) {
       }
 
@@ -124,11 +129,14 @@ void ch32h417_clock_init(void) {
       /* Flash access, latency for HCLK/2 (vendor value at 400MHz). */
       FLASH->ACTLR = (FLASH->ACTLR & ~((uint32_t)0x3)) |
                      FLASH_ACTLR_LATENCY_HCLK_DIV2;
+      /* The latency must be committed before the speed switch below. */
+      CH32H417_DSB();
 
       /* Switch SYSCLK over to the PLL. */
       RCC->PLLCFGR |= (uint32_t)RCC_SYSPLL_GATE;
       RCC->CFGR0 &= (uint32_t)~RCC_SW;
       RCC->CFGR0 |= (uint32_t)RCC_SW_PLL;
+      CH32H417_DSB();
       while ((RCC->CFGR0 & (uint32_t)RCC_SWS) != (uint32_t)0x08) {
       }
     }
@@ -160,9 +168,13 @@ void hal_lld_init(void) {
      set. HBRSTR (DMA/FMC/SDMMC/USB/ETH side) is not touched: the
      header has no bit definitions for it. */
   RCC->HB2PRSTR |= ~hb2_keep;
+  CH32H417_DSB();
   RCC->HB2PRSTR &= hb2_keep;
+  CH32H417_DSB();
   RCC->HB1PRSTR |= ~hb1_keep;
+  CH32H417_DSB();
   RCC->HB1PRSTR &= hb1_keep;
+  CH32H417_DSB();
   (void)RCC->HB2PRSTR;
   (void)RCC->HB1PRSTR;
 
