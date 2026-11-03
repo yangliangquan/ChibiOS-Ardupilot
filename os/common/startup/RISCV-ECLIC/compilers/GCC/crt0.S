@@ -118,19 +118,15 @@
 .global _start
 .type _start, @function
 _start:
-    /* Disable interrupts globaly */
-    csrc CSR_MSTATUS, MSTATUS_MIE
-
-    /* Jump to logical address first to ensure correct operation of RAM region  */
-    la      a0, _start
-    li      a1, 1
-    slli    a1, a1, 29
-    bleu    a1, a0, _crt0_entry
-    srli    a1, a1, 2
-    bleu    a1, a0, _crt0_entry
-    la      a0, _crt0_entry
-    add     a0, a0, a1
-    jr      a0
+    /* CH32H417: fall straight through into _crt0_entry. The image is
+       linked in its true execution window (V5F XIP at 0x00010000, the
+       V3F stub wakes this core there, and the WCH EVT startup jumps
+       directly for the same reason). The upstream Nuclei "logical
+       address" dance removed here would compute link+0x08000000 (the
+       flash programming window of RM ch46) whenever _start sits below
+       0x08000000 - always our case - and desynchronize every
+       PC-relative reference (la/gp/sp) after the jump. Interrupts are
+       disabled by the first instruction of _crt0_entry below. */
 
 /*
  * CRT0 entry point.
