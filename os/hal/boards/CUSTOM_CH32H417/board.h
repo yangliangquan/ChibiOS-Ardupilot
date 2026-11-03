@@ -56,21 +56,21 @@
  */
 
 /**
- * @brief   Board LED, PC0, active low.
+ * @brief   Board LED, PD11, active low.
  */
-#define GPIOC_LED0                  0U
+#define GPIOD_LED11                 11U
 
 /**
  * @brief   USART1 TX, PA9, alternate function 7.
  */
-#define GPIOA_USART1_TX             9U
-#define USART1_TX_AF                7U
+#define GPIOD_USART3_TX             8U
+#define USART3_TX_AF                7U
 
 /**
  * @brief   USART1 RX, PA10, alternate function 7.
  */
-#define GPIOA_USART1_RX             10U
-#define USART1_RX_AF                7U
+#define GPIOD_USART3_RX             9U
+#define USART3_RX_AF                7U
 
 /*===========================================================================*/
 /* Driver macros.                                                            */
@@ -80,19 +80,19 @@
  * @brief   Turns on the board LED (active low).
  */
 #define LED_ON()                                                        \
-  palClearPad(GPIOC, GPIOC_LED0)
+  palClearPad(GPIOD, GPIOD_LED11)
 
 /**
  * @brief   Turns off the board LED (active low).
  */
 #define LED_OFF()                                                       \
-  palSetPad(GPIOC, GPIOC_LED0)
+  palSetPad(GPIOD, GPIOD_LED11)
 
 /**
  * @brief   Toggles the board LED.
  */
 #define LED_TOGGLE()                                                    \
-  palTogglePad(GPIOC, GPIOC_LED0)
+  palTogglePad(GPIOD, GPIOD_LED11)
 
 #ifdef __cplusplus
 extern "C" {

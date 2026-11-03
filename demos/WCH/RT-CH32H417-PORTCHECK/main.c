@@ -117,8 +117,8 @@ int main(void) {
 
   while (true) {
     LED_TOGGLE();
-    systime_snapshot = chVTGetSystemTime();
-    main_loops++;
+    // systime_snapshot = chVTGetSystemTime();
+    // main_loops++;
     chThdSleepMilliseconds(500);
   }
 }
