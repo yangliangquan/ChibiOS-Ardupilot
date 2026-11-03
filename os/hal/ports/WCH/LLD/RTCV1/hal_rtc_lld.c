@@ -189,18 +189,41 @@ void rtc_lld_init(void) {
   /* RTC pointer initialization.*/
   RTCD1.rtc = RTC;
 
-  /* Unlock the backup domain first: RCC_BDCTLR's RTCSEL/RTCEN are
-     write protected after reset until PWR_CTLR_DBP is set (RM note
-     below the BDCTLR description). Without this the clock selection
-     below is silently dropped and the RSF wait never completes -
-     observed as a hang inside halInit() on hardware. */
-  RCC_HB1PeriphClockCmd(RCC_HB1Periph_PWR, ENABLE);
+  /* Unlock the backup domain: RCC_BDCTLR's RTCSEL/RTCEN are write
+     protected after reset until PWR_CTLR_DBP is set (RM note below
+     the BDCTLR description) and the backup interface needs its own
+     bus clock. Without both, the clock selection below is silently
+     dropped - observed as a hang inside halInit() on hardware. */
+  RCC_HB1PeriphClockCmd(RCC_HB1Periph_PWR | RCC_HB1Periph_BKP, ENABLE);
   PWR->CTLR |= PWR_CTLR_DBP;
 
-  /* LSI based RTC clock, no external crystal required. */
+  /* The backup-domain bits survive every system reset (RM: only BDRST
+     or a BKP reset clears them), so pulse BDRST to drop a stale
+     RTCSEL - a board previously configured for LSE would otherwise
+     keep waiting for a crystal that is not fitted. */
+  RCC->BDCTLR |= RCC_BDRST;
+  RCC->BDCTLR &= ~RCC_BDRST;
+
+  /* LSI based RTC clock, no external crystal required: enable it and
+     wait for ITS ready flag (RSTSCKR.LSIRDY - nothing here ever
+     looks at LSE). */
   RCC_LSICmd(ENABLE);
+  {
+    uint32_t spin = RTC_SPIN_LIMIT;
+
+    while (((RCC->RSTSCKR & RCC_LSIRDY) == 0U) && (spin > 0U)) {
+      spin--;
+    }
+  }
+  osalDbgAssert((RCC->RSTSCKR & RCC_LSIRDY) != 0U, "LSI failed to start");
+
   RCC_RTCCLKConfig(RCC_RTCCLKSource_LSI);
   RCC_RTCCLKCmd(ENABLE);
+
+  /* Readback guard: RTCSEL must have landed as LSI (0b10), not LSE
+     or none - catches a silently dropped write on hardware. */
+  osalDbgAssert((RCC->BDCTLR & RCC_RTCSEL) == RCC_RTCSEL_LSI,
+                "RTCSEL write did not stick (BKP/DBP?)");
 
   /* Clear RSF and wait (bounded) for the RTC domain to synchronize;
      RSF only sets once the RTC clock is actually running. */
