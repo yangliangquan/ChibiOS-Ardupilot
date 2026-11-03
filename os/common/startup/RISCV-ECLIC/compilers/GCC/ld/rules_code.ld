@@ -46,7 +46,11 @@ SECTIONS
         *(.text.*)
         *(.gcc*)
         __text_end__ = .;
-    } > TEXT_FLASH AT > TEXT_FLASH_LMA
+    } > TEXT_RAM AT > TEXT_RAM_LMA
+
+    /* Flash load address of the .text image, consumed by the crt0
+       startup copy (text runs from ITCM). */
+    __text_lma = LOADADDR(.text);
 
     .rodata : ALIGN(4)
     {

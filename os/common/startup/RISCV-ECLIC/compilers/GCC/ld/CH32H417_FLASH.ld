@@ -38,8 +38,9 @@ MEMORY
        0x080D0000. Reservation only, no sections are placed here;
        keep CH32H417_EFL_BASE_ADDR/SIZE in hal_efl_lld.h in sync. */
     flash1 (rx)  : org = 0x000D0000, len = 128k
-    /* ITCM: fast-running code, copied from flash0 at startup
-       (CRT1 area 1: sections .ram1_init and .itcm). */
+    /* ITCM: the .text image runs here (copied from flash0 by crt0
+       before the first C call), plus opt-in .itcm sections handled
+       by CRT1 area 1 (.ram1_init). */
     ram1   (rwx) : org = 0x200A0000, len = 128k
     /* DTCM: data/bss, heap and stacks (CRT1 area 0). The first 512
        bytes are hardware-owned (the hardware stacking region sits at
@@ -61,9 +62,15 @@ REGION_ALIAS("VECTORS_FLASH_LMA", flash0);
 REGION_ALIAS("XTORS_FLASH", flash0);
 REGION_ALIAS("XTORS_FLASH_LMA", flash0);
 
-/* Flash region to be used for code text.*/
+/* Code text runs from ITCM, loaded from the code flash (crt0 copies
+   it before the first C call); the FLASH aliases are kept so that
+   retargeting .text back to XIP is a two-line change in rules_code.ld. */
 REGION_ALIAS("TEXT_FLASH", flash0);
 REGION_ALIAS("TEXT_FLASH_LMA", flash0);
+
+/* Flash region to be used for code text.*/
+REGION_ALIAS("TEXT_RAM", ram1);
+REGION_ALIAS("TEXT_RAM_LMA", flash0);
 
 /* Flash region to be used for read only data.*/
 REGION_ALIAS("RODATA_FLASH", flash0);

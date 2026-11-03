@@ -83,6 +83,16 @@
 #endif
 
 /**
+ * @brief   .text relocation switch (text runs from ITCM).
+ * @note    The hook calls below use "call" instead of "jal": with
+ *          .text in ITCM the targets are ~536MB away, outside the
+ *          +-1MB range of JAL ("call" is auipc+jalr, +-2GB).
+ */
+#if !defined(CRT0_INIT_TEXT) || defined(__DOXYGEN__)
+#define CRT0_INIT_TEXT                      TRUE
+#endif
+
+/**
  * @brief   Constructors invocation switch.
  */
 #if !defined(CRT0_CALL_CONSTRUCTORS) || defined(__DOXYGEN__)
@@ -178,13 +188,33 @@ _crt0_entry:
     /* Enable mcycle and minstret counters */
     csrci   CSR_MCOUNTINHIBIT, 0x5
 
+#if CRT0_INIT_TEXT == TRUE
+    /* Copy the .text image from its flash load address to the run
+       address (ITCM) and synchronize the instruction stream. This
+       must precede every C call: crt0 lives in .crt0/.vectors
+       (flash) while all C functions run from the copied image.
+       Half-word steps keep it safe for RVC-aligned sections. */
+    la      a0, __text_lma
+    la      a1, __text_base__
+    la      a2, __text_end__
+    bgeu    a1, a2, endtextloop
+textloop:
+    lhu     t0, 0(a0)
+    sh      t0, 0(a1)
+    addi    a0, a0, 2
+    addi    a1, a1, 2
+    bltu    a1, a2, textloop
+endtextloop:
+    fence.i
+#endif
+
 #if CRT0_INIT_CORE == TRUE
     /* Core initialization.*/
-    jal     ra, __core_init
+    call    __core_init
 #endif
 
     /* Early initialization..*/
-    jal     ra, __early_init
+    call    __early_init
 
 #if CRT0_INIT_STACKS == TRUE
     li      a0, CRT0_STACKS_FILL_PATTERN
@@ -232,11 +262,11 @@ endbloop:
 
 #if CRT0_INIT_RAM_AREAS == TRUE
     /* RAM areas initialization.*/
-    jal      ra, __init_ram_areas
+    call    __init_ram_areas
 #endif
 
     /* Late initialization..*/
-    jal      ra, __late_init
+    call    __late_init
 
 #if CRT0_CALL_CONSTRUCTORS == TRUE
     /* Constructors invocation.*/
@@ -252,7 +282,7 @@ endinitloop:
 #endif
 
     /* Main program invocation, r0 contains the returned value.*/
-    jal     ra, main
+    call    main
 
 #if CRT0_CALL_DESTRUCTORS == TRUE
     /* Destructors invocation.*/
@@ -268,7 +298,7 @@ endfiniloop:
 #endif
 
     /* Branching to the defined exit handler.*/
-    jal       ra, __default_exit
+    call    __default_exit
 
 #endif
 
