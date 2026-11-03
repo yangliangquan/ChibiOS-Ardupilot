@@ -41,9 +41,10 @@ MEMORY
     /* ITCM: fast-running code, copied from flash0 at startup
        (CRT1 area 1: sections .ram1_init and .itcm). */
     ram1   (rwx) : org = 0x200A0000, len = 128k
-    /* DTCM: data/bss, heap and stacks (CRT1 area 0). First 0x300
-       bytes reserved as in the EVT layout. */
-    ram0   (wx)  : org = 0x200C0300, len = 0x3FD00
+    /* DTCM: data/bss, heap and stacks (CRT1 area 0). The first 512
+       bytes are hardware-owned (the hardware stacking region sits at
+       the DTCM base, RM HW_POPDM_ADDR) and are not general RAM. */
+    ram0   (wx)  : org = 0x200C0200, len = 0x3FE00
     /* Shared SRAM upper part: fast-running code (CRT1 area 2:
        sections .ram2_init and .sram). V3F owns 0x20100000..0x20120000. */
     ram2   (rwx) : org = 0x20120000, len = 384k
