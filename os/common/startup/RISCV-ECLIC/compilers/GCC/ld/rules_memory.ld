@@ -14,14 +14,25 @@
     limitations under the License.
 */
 
-/* Trimmed to a single flash/ram region pair for the CH32H417 port
-   (flash0/ram0 only, matching CRT1_AREAS_NUMBER=1; the upper
-   flash1..7/ram1..7 placeholder regions were removed together with
-   their symbol and section blocks). */
+/* Memory rules for the CH32H417 port: three CRT1 RAM areas.
+   ram0 = DTCM (data/bss/heap/stacks), ram1 = ITCM (fast code),
+   ram2 = shared SRAM upper part (fast code). Initialized content of
+   ram1/ram2 is loaded from flash0 and copied by __init_ram_areas();
+   place fast code with __attribute__((section(".itcm"))) or
+   section(".sram") (also collected below). The flash placeholder
+   regions were removed together with their blocks. */
 
 __ram0_base__           = ORIGIN(ram0);
 __ram0_size__           = LENGTH(ram0);
 __ram0_end__            = __ram0_base__ + __ram0_size__;
+
+__ram1_base__           = ORIGIN(ram1);
+__ram1_size__           = LENGTH(ram1);
+__ram1_end__            = __ram1_base__ + __ram1_size__;
+
+__ram2_base__           = ORIGIN(ram2);
+__ram2_size__           = LENGTH(ram2);
+__ram2_end__            = __ram2_base__ + __ram2_size__;
 
 __flash0_base__         = ORIGIN(flash0);
 __flash0_size__         = LENGTH(flash0);
@@ -50,6 +61,54 @@ SECTIONS
         . = ALIGN(4);
         __ram0_free__ = .;
     } > ram0
+
+    .ram1_init : ALIGN(4)
+    {
+        __ram1_init_text__ = LOADADDR(.ram1_init);
+        __ram1_init__ = .;
+        KEEP(*(.ram1_init))
+        KEEP(*(.ram1_init.*))
+        KEEP(*(.itcm))
+        KEEP(*(.itcm.*))
+        . = ALIGN(4);
+    } > ram1 AT > RAM_INIT_FLASH_LMA
+
+    .ram1 (NOLOAD) : ALIGN(4)
+    {
+        __ram1_clear__ = .;
+        *(.ram1_clear)
+        *(.ram1_clear.*)
+        . = ALIGN(4);
+        __ram1_noinit__ = .;
+        *(.ram1)
+        *(.ram1.*)
+        . = ALIGN(4);
+        __ram1_free__ = .;
+    } > ram1
+
+    .ram2_init : ALIGN(4)
+    {
+        __ram2_init_text__ = LOADADDR(.ram2_init);
+        __ram2_init__ = .;
+        KEEP(*(.ram2_init))
+        KEEP(*(.ram2_init.*))
+        KEEP(*(.sram))
+        KEEP(*(.sram.*))
+        . = ALIGN(4);
+    } > ram2 AT > RAM_INIT_FLASH_LMA
+
+    .ram2 (NOLOAD) : ALIGN(4)
+    {
+        __ram2_clear__ = .;
+        *(.ram2_clear)
+        *(.ram2_clear.*)
+        . = ALIGN(4);
+        __ram2_noinit__ = .;
+        *(.ram2)
+        *(.ram2.*)
+        . = ALIGN(4);
+        __ram2_free__ = .;
+    } > ram2
 
     .flash0 : ALIGN(4)
     {

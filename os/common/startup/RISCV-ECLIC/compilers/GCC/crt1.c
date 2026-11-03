@@ -31,7 +31,10 @@
 /*===========================================================================*/
 
 #if !defined(CRT1_AREAS_NUMBER) || defined(__DOXYGEN__)
-#define CRT1_AREAS_NUMBER                   1
+/* CH32H417: ram0=DTCM (variables), ram1=ITCM (fast code),
+   ram2=shared SRAM (fast code); areas unused by the linker are
+   initialized as empty no-ops. */
+#define CRT1_AREAS_NUMBER                   3
 #endif
 
 #if (CRT1_AREAS_NUMBER < 0) || (CRT1_AREAS_NUMBER > 8)

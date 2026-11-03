@@ -18,23 +18,35 @@
 */
 
 /*
- * CH32H417 memory setup.
+ * CH32H417 memory setup (V5F core).
  *
- * NOTE: Provisional values taken from the WCH EVT Link_v5f.ld.
- *       Final partitioning (dual-core flash layout, full SRAM map)
- *       to be confirmed against the reference manual.
+ * CodeFlash is 960KB and entirely zero-wait (datasheet). V3F owns the
+ * first 64KB at 0x00000000 (its own linker script), the EFL storage
+ * partition takes the top 128KB, and this V5F image gets the middle
+ * 768KB starting at 0x00010000. RAM: ITCM for fast-running code, DTCM
+ * for data/bss, heap and stacks, and the upper 384KB of the 512KB
+ * shared SRAM for more fast code (V3F owns its first 128KB).
  */
 
 OUTPUT_ARCH( "riscv" )
 
 MEMORY
 {
-    /* Zero-wait code flash for the V5F core image. Single region,
-       matching CRT1_AREAS_NUMBER=1 (rules_memory.ld is trimmed to
-       match). */
-    flash0 (rx) : org = 0x00010000, len = 128k
-    /* DTCM, first 0x300 bytes reserved as in the EVT layout. */
-    ram0   (wx) : org = 0x200C0300, len = 0x3FD00
+    /* V5F code flash, XIP at zero wait states. */
+    flash0 (rx)  : org = 0x00010000, len = 768k
+    /* EFL storage partition (logs/parameters), programming alias
+       0x080D0000. Reservation only, no sections are placed here;
+       keep CH32H417_EFL_BASE_ADDR/SIZE in hal_efl_lld.h in sync. */
+    flash1 (rx)  : org = 0x000D0000, len = 128k
+    /* ITCM: fast-running code, copied from flash0 at startup
+       (CRT1 area 1: sections .ram1_init and .itcm). */
+    ram1   (rwx) : org = 0x200A0000, len = 128k
+    /* DTCM: data/bss, heap and stacks (CRT1 area 0). First 0x300
+       bytes reserved as in the EVT layout. */
+    ram0   (wx)  : org = 0x200C0300, len = 0x3FD00
+    /* Shared SRAM upper part: fast-running code (CRT1 area 2:
+       sections .ram2_init and .sram). V3F owns 0x20100000..0x20120000. */
+    ram2   (rwx) : org = 0x20120000, len = 384k
 }
 
 /* For each data/text section two region are defined, a virtual region
