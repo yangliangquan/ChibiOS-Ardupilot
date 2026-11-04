@@ -3,8 +3,18 @@ ifneq ($(findstring HAL_USE_SERIAL TRUE,$(HALCONF)),)
 PLATFORMSRC += $(CHIBIOS)/os/hal/ports/WCH/LLD/USARTv1/hal_serial_lld.c \
                $(CHIBIOS)/os/common/ext/WCH/CH32H417/ch32h417_usart.c
 endif
+ifneq ($(findstring HAL_USE_SIO TRUE,$(HALCONF)),)
+PLATFORMSRC += $(CHIBIOS)/os/hal/ports/WCH/LLD/USARTv1/hal_sio_lld.c \
+               $(CHIBIOS)/os/common/ext/WCH/CH32H417/ch32h417_usart.c
+endif
+ifneq ($(findstring HAL_USE_UART TRUE,$(HALCONF)),)
+PLATFORMSRC += $(CHIBIOS)/os/hal/ports/WCH/LLD/USARTv1/hal_uart_lld.c \
+               $(CHIBIOS)/os/common/ext/WCH/CH32H417/ch32h417_usart.c
+endif
 else
 PLATFORMSRC += $(CHIBIOS)/os/hal/ports/WCH/LLD/USARTv1/hal_serial_lld.c \
+               $(CHIBIOS)/os/hal/ports/WCH/LLD/USARTv1/hal_sio_lld.c \
+               $(CHIBIOS)/os/hal/ports/WCH/LLD/USARTv1/hal_uart_lld.c \
                $(CHIBIOS)/os/common/ext/WCH/CH32H417/ch32h417_usart.c
 endif
 
