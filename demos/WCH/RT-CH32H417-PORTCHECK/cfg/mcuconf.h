@@ -38,6 +38,32 @@
 #define CH32H417_SERIAL_USE_USART8             TRUE
 
 /*
+ * The SIO and UART drivers share the USART units with the SERIAL driver,
+ * a unit can only be assigned to one of the three at a time (the LLD
+ * headers fail the build otherwise). Every unit is taken by the SERIAL
+ * console above, so both drivers are disabled here; to exercise them set
+ * the matching CH32H417_SERIAL_USE_USARTx back to FALSE, enable the unit
+ * below and enable HAL_USE_SIO / HAL_USE_UART in halconf.h.
+ */
+#define CH32H417_SIO_USE_USART1                FALSE
+#define CH32H417_SIO_USE_USART2                FALSE
+#define CH32H417_SIO_USE_USART3                FALSE
+#define CH32H417_SIO_USE_USART4                FALSE
+#define CH32H417_SIO_USE_USART5                FALSE
+#define CH32H417_SIO_USE_USART6                FALSE
+#define CH32H417_SIO_USE_USART7                FALSE
+#define CH32H417_SIO_USE_USART8                FALSE
+
+#define CH32H417_UART_USE_USART1               FALSE
+#define CH32H417_UART_USE_USART2               FALSE
+#define CH32H417_UART_USE_USART3               FALSE
+#define CH32H417_UART_USE_USART4               FALSE
+#define CH32H417_UART_USE_USART5               FALSE
+#define CH32H417_UART_USE_USART6               FALSE
+#define CH32H417_UART_USE_USART7               FALSE
+#define CH32H417_UART_USE_USART8               FALSE
+
+/*
  * Unit assignments.
  */
 #define CH32H417_WDG_USE_IWDG                  TRUE
@@ -52,6 +78,10 @@
 #define CH32H417_SPI_USE_SPI3                  FALSE
 #define CH32H417_SPI_USE_SPI4                  TRUE
 /*
+ * No DMA channel has to be assigned: the DMAMUX routing is fully flexible,
+ * every driver takes a free channel at start and routes its own request onto
+ * it. Only the interrupt priorities have to be configured.
+ *
  * SPI2/SPI3 host I2S instead of the SPI driver (the IRQ vector of a
  * unit is shared between the two drivers).
  */
@@ -71,11 +101,12 @@
 #define CH32H417_TRNG_USE_RNG                  TRUE
 #define CH32H417_WDG_USE_WWDG                  TRUE
 /*
- * SDC backend: the board slot is wired to the SDMMC controller
- * (confirmed). The SDIO alternative is kept for reference.
+ * SDC backend: the slot is wired to the SDIO controller, the pin set
+ * (PB10/PB11, PE8/PE9, PB3/PB4) is not reachable from the SDMMC
+ * controller. SDMMC is kept for reference.
  */
-#define CH32H417_SDC_USE_SDIO                  FALSE
-#define CH32H417_SDC_USE_SDMMC                 TRUE
+#define CH32H417_SDC_USE_SDIO                  TRUE
+#define CH32H417_SDC_USE_SDMMC                 FALSE
 /*
  * QSPI XIP (memory mapped) windows, confirmed:
  *   QSPI1: 0x90000000, QSPI2: 0x70000000

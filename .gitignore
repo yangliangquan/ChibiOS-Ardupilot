@@ -2,3 +2,6 @@ temp/
 .commandcode/
 build/
 .dep/
+
+.vscode/
+**\.clangd

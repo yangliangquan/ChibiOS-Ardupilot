@@ -55,7 +55,7 @@ endif
 # Stack size to be allocated to the process stack. This stack is
 # the stack used by the main() thread.
 ifeq ($(USE_PROCESS_STACKSIZE),)
-  USE_PROCESS_STACKSIZE = 0x800
+  USE_PROCESS_STACKSIZE = 0x1000
 endif
 
 #
@@ -70,7 +70,7 @@ endif
 PROJECT = chportcheck
 
 # Target settings.
-MCU_ARCH = rv32imac_zba_zbb_zbc_zbs_xw
+MCU_ARCH = rv32imafc_zba_zbb_zbc_zbs_xw
 MCU_ABI = ilp32
 MCU_CMODEL = medlow
 
