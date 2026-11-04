@@ -35,9 +35,8 @@
 
 /**
  * @brief   Circular mode support flag.
- * @note    Not supported without DMA.
  */
-#define SPI_SUPPORTS_CIRCULAR           FALSE
+#define SPI_SUPPORTS_CIRCULAR           TRUE
 
 /**
  * @brief   Slave mode support flag.
@@ -53,11 +52,13 @@
  * @name    Configuration options
  * @{
  */
+#include "hal_lld.h"
+
 /**
- * @brief   SPIx driver enable switches.
+ * @brief   SPI clock in Hz.
  */
-#if !defined(CH32H417_SPI_USE_SPI1) || defined(__DOXYGEN__)
-#define CH32H417_SPI_USE_SPI1                  FALSE
+#if !defined(CH32H417_SPI_CLOCK) || defined(__DOXYGEN__)
+#define CH32H417_SPI_CLOCK                    ch32h417_hclk
 #endif
 #if !defined(CH32H417_SPI_USE_SPI2) || defined(__DOXYGEN__)
 #define CH32H417_SPI_USE_SPI2                  FALSE
@@ -77,6 +78,41 @@
 #if !defined(CH32H417_SPI_CLOCK) || defined(__DOXYGEN__)
 #define CH32H417_SPI_CLOCK                    CH32H417_HCLK
 #endif
+
+/**
+ * @brief   Per-unit IRQ and DMA channel IRQ priorities.
+ * @note    The priority values are the PFIC @p IPRIOR[7:4] fields, with
+ *          PMTCFG=2 the two high bits are the preemption level, so 0 is the
+ *          highest level and 12 the lowest. The deferred preemption software
+ *          interrupt uses 0xFF and must remain the lowest of all.
+ * @note    DMA channels are allocated dynamically, no per-unit channel
+ *          assignment is required.
+ * @{
+ */
+#if !defined(CH32H417_SPI_SPI1_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI1_IRQ_PRIORITY        8
+#endif
+#if !defined(CH32H417_SPI_SPI2_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI2_IRQ_PRIORITY        8
+#endif
+#if !defined(CH32H417_SPI_SPI3_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI3_IRQ_PRIORITY        8
+#endif
+#if !defined(CH32H417_SPI_SPI4_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI4_IRQ_PRIORITY        8
+#endif
+#if !defined(CH32H417_SPI_SPI1_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI1_DMA_PRIORITY        8
+#endif
+#if !defined(CH32H417_SPI_SPI2_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI2_DMA_PRIORITY        8
+#endif
+#if !defined(CH32H417_SPI_SPI3_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI3_DMA_PRIORITY        8
+#endif
+#if !defined(CH32H417_SPI_SPI4_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SPI_SPI4_DMA_PRIORITY        8
+#endif
 /** @} */
 
 /*===========================================================================*/
@@ -92,6 +128,51 @@
 #error "SPI_SELECT_MODE_LLD not supported by this driver"
 #endif
 
+/* The driver always transfers through DMA.*/
+#if !defined(CH32_DMA_REQUIRED)
+#define CH32_DMA_REQUIRED
+#endif
+
+/* The DMA channels are allocated dynamically at driver start, the DMAMUX
+   routing allows any channel to be connected to any request. Only the IRQ
+   priorities need to be configured. */
+
+/* Check on the DMA priorities.*/
+#if CH32H417_SPI_USE_SPI1 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI1_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to SPI1"
+#endif
+#if CH32H417_SPI_USE_SPI2 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI2_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to SPI2"
+#endif
+#if CH32H417_SPI_USE_SPI3 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI3_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to SPI3"
+#endif
+#if CH32H417_SPI_USE_SPI4 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI4_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to SPI4"
+#endif
+
+/* Check on the peripheral IRQ priorities.*/
+#if CH32H417_SPI_USE_SPI1 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI1_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to SPI1"
+#endif
+#if CH32H417_SPI_USE_SPI2 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI2_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to SPI2"
+#endif
+#if CH32H417_SPI_USE_SPI3 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI3_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to SPI3"
+#endif
+#if CH32H417_SPI_USE_SPI4 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SPI_SPI4_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to SPI4"
+#endif
+
 /*===========================================================================*/
 /* Driver macros.                                                            */
 /*===========================================================================*/
@@ -102,14 +183,16 @@
 #define spi_lld_driver_fields                                               \
   /* Pointer to the SPI registers block.*/                                  \
   SPI_TypeDef               *spi;                                           \
-  /* Transfer buffers.*/                                                    \
-  const void                *txbuf;                                         \
-  void                      *rxbuf;                                         \
-  /* Transfer indices.*/                                                    \
-  size_t                    txidx;                                          \
-  size_t                    rxidx;                                          \
-  /* Transfer length.*/                                                     \
-  size_t                    n;
+  /* Associated DMA channels.*/                                             \
+  const ch32_dma_stream_t   *dmarx;                                         \
+  const ch32_dma_stream_t   *dmatx;                                         \
+  /* DMA mode bits for the RX and TX channels.*/                            \
+  uint32_t                  rxdmamode;                                      \
+  uint32_t                  txdmamode;                                      \
+  /* Filler word used when no TX buffer is supplied.*/                      \
+  uint32_t                  txsource;                                       \
+  /* Sink used when no RX buffer is supplied.*/                             \
+  uint16_t                  rxsink;
 
 /**
  * @brief   Low level fields of the SPI configuration structure.
