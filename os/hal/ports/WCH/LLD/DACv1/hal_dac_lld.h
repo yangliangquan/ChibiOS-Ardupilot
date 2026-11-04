@@ -62,6 +62,15 @@
 #if !defined(CH32H417_DAC_USE_DAC1) || defined(__DOXYGEN__)
 #define CH32H417_DAC_USE_DAC1                  FALSE
 #endif
+
+/**
+ * @brief   DMA channel IRQ priority for the buffered output.
+ * @note    The channel itself is allocated dynamically at driver start, the
+ *          DMAMUX routing allows any channel to be connected to any request.
+ */
+#if !defined(CH32H417_DAC_DAC1_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_DAC_DAC1_DMA_PRIORITY        8
+#endif
 /** @} */
 
 /*===========================================================================*/
@@ -70,6 +79,14 @@
 
 #if !CH32H417_DAC_USE_DAC1
 #error "DAC driver activated but no DAC unit assigned"
+#endif
+
+#if !defined(CH32_DMA_REQUIRED)
+#define CH32_DMA_REQUIRED
+#endif
+
+#if !CH32_DMA_IS_VALID_PRIORITY(CH32H417_DAC_DAC1_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to DAC1"
 #endif
 
 /*===========================================================================*/
@@ -97,16 +114,22 @@ typedef uint32_t dacerror_t;
 #define dac_lld_config_fields
 
 /**
- * @brief   Low level conversion group fields (none).
+ * @brief   Low level conversion group fields.
+ * @note    Buffered conversions use the channel list, @p num_channels
+ *          entries of channel indexes (0 = OUT1, 1 = OUT2).
  */
-#define dac_lld_conversion_group_fields
+#define dac_lld_conversion_group_fields                                     \
+  /* Channel list, 0 and/or 1, num_channels entries.*/                      \
+  const dacchannel_t        *channels;
 
 /**
  * @brief   Low level driver fields.
  */
 #define dac_lld_driver_fields                                             \
   /* Pointer to the DAC registers block.*/                                \
-  DAC_TypeDef               *dac;
+  DAC_TypeDef               *dac;                                         \
+  /* Associated DMA channel.*/                                            \
+  const ch32_dma_stream_t   *dma;
 
 /*===========================================================================*/
 /* External declarations.                                                    */

@@ -19,9 +19,10 @@
  * @brief   CH32H417 DAC subsystem low level driver source.
  *
  * @details Both channels are initialized at start with the software
- *          trigger; dacPutChannelX() writes the holding register and
- *          fires the trigger. Buffer conversions (dacStartConversion)
- *          are not supported without DMA.
+ *          trigger; dacPutChannelX() writes the holding register and fires
+ *          the trigger. Buffer conversions (dacStartConversion) switch the
+ *          channels to automatic conversion and let the DMA channel feed the
+ *          data registers.
  *
  * @addtogroup DAC
  * @{
@@ -32,6 +33,45 @@
 #if (HAL_USE_DAC == TRUE) || defined(__DOXYGEN__)
 
 #include "ch32h417_dac.h"
+
+/*===========================================================================*/
+/* Driver local functions.                                                   */
+/*===========================================================================*/
+
+/**
+ * @brief   DMA end of transfer service routine.
+ *
+ * @param[in] dacp      pointer to the @p DACDriver object
+ * @param[in] flags     pre-shifted content of the INTFR register
+ */
+static void dac_lld_serve_interrupt(DACDriver *dacp, uint32_t flags) {
+
+  /* DMA errors handling.*/
+  if ((flags & CH32_DMA_ISR_TEIF) != 0U) {
+    ch32DmaStreamDisable(dacp->dma);
+    DAC_DMACmd(DAC_Channel_1, DISABLE);
+    DAC_DMACmd(DAC_Channel_2, DISABLE);
+
+    /* DMA failure reported to the upper layer.*/
+    _dac_isr_error_code(dacp, HAL_RET_HW_FAILURE);
+    return;
+  }
+
+  /* It is possible that the conversion group has already be reset by the
+     error handler, in this case this interrupt is spurious.*/
+  if (dacp->grpp == NULL) {
+    return;
+  }
+
+  /* DAC conversions are always circular, the DMA keeps refilling the
+     output from the samples buffer until the conversion is stopped.*/
+  if ((flags & CH32_DMA_ISR_TCIF) != 0U) {
+    _dac_isr_full_code(dacp);
+  }
+  else if ((flags & CH32_DMA_ISR_HTIF) != 0U) {
+    _dac_isr_half_code(dacp);
+  }
+}
 
 /*===========================================================================*/
 /* Driver exported variables.                                                */
@@ -66,8 +106,6 @@ void dac_lld_init(void) {
 msg_t dac_lld_start(DACDriver *dacp) {
   DAC_InitTypeDef init;
 
-  (void)dacp;
-
   RCC_HB1PeriphClockCmd(RCC_HB1Periph_DAC, ENABLE);
 
   DAC_StructInit(&init);
@@ -80,6 +118,17 @@ msg_t dac_lld_start(DACDriver *dacp) {
   DAC_Cmd(DAC_Channel_1, ENABLE);
   DAC_Cmd(DAC_Channel_2, ENABLE);
 
+  /* Dynamic channel allocation, the request routing is done on the channel
+     that was handed out.*/
+  dacp->dma = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
+                                  CH32H417_DAC_DAC1_DMA_PRIORITY,
+                                  (ch32_dmaisr_t)dac_lld_serve_interrupt,
+                                  (void *)dacp);
+  osalDbgAssert(dacp->dma != NULL, "DAC1 DMA channel not available");
+  if (dacp->dma == NULL) {
+    return HAL_RET_NO_RESOURCE;
+  }
+
   return HAL_RET_SUCCESS;
 }
 
@@ -90,10 +139,13 @@ msg_t dac_lld_start(DACDriver *dacp) {
  */
 void dac_lld_stop(DACDriver *dacp) {
 
-  (void)dacp;
-
   DAC_Cmd(DAC_Channel_1, DISABLE);
   DAC_Cmd(DAC_Channel_2, DISABLE);
+
+  if (dacp->dma != NULL) {
+    ch32DmaStreamFreeI(dacp->dma);
+    dacp->dma = NULL;
+  }
 }
 
 /**
@@ -121,16 +173,77 @@ msg_t dac_lld_put_channel(DACDriver *dacp,
 }
 
 /**
- * @brief   Starts a buffered conversion (requires DMA).
+ * @brief   Starts a buffered conversion.
  *
  * @notapi
  */
 msg_t dac_lld_start_conversion(DACDriver *dacp) {
+  const DACConversionGroup *grpp = dacp->grpp;
+  DAC_InitTypeDef init;
+  uint32_t mode;
+  uint32_t total;
+  bool dual = (grpp->num_channels > 1U);
 
-  (void)dacp;
+  osalDbgAssert((grpp->num_channels == 1U) || (grpp->num_channels == 2U),
+                "invalid channel count");
 
-  /* Buffered conversions need DMA, not available yet. */
-  return HAL_RET_NO_RESOURCE;
+  /* No channel could be allocated at start, the conversion cannot run.*/
+  osalDbgAssert(dacp->dma != NULL, "DAC DMA channel not allocated");
+  if (dacp->dma == NULL) {
+    return HAL_RET_NO_RESOURCE;
+  }
+
+  /* Automatic conversion on data register write is what lets the DMA pace
+     the output, the software trigger used by dacPutChannelX() is replaced
+     here and restored in dac_lld_stop_conversion().*/
+  DAC_StructInit(&init);
+  init.DAC_Trigger = DAC_Trigger_None;
+  init.DAC_WaveGeneration = DAC_WaveGeneration_None;
+  init.DAC_OutputBuffer = DAC_OutputBuffer_Enable;
+  DAC_Init(DAC_Channel_1, &init);
+  DAC_Init(DAC_Channel_2, &init);
+  DAC_Cmd(DAC_Channel_1, ENABLE);
+  DAC_Cmd(DAC_Channel_2, ENABLE);
+
+  /* Destination register: the dual register when both channels are driven,
+     so that a single transfer updates both channels.*/
+  if (dual) {
+    ch32DmaStreamSetPeripheral(dacp->dma, &dacp->dac->RD12BDHR);
+    ch32DmaStreamSetRequest(dacp->dma, CH32_DMAMUX_DAC1);
+  }
+  else if (grpp->channels[0] == 0U) {
+    ch32DmaStreamSetPeripheral(dacp->dma, &dacp->dac->R12BDHR1);
+    ch32DmaStreamSetRequest(dacp->dma, CH32_DMAMUX_DAC1);
+  }
+  else {
+    ch32DmaStreamSetPeripheral(dacp->dma, &dacp->dac->R12BDHR2);
+    ch32DmaStreamSetRequest(dacp->dma, CH32_DMAMUX_DAC2);
+  }
+
+  /* DMA setup, one halfword per sample. DAC conversions are always
+     circular, the half transfer interrupt is used for streaming.*/
+  total = (uint32_t)grpp->num_channels * (uint32_t)dacp->depth;
+  mode = CH32_DMA_CFGR_DIR_M2P | CH32_DMA_CFGR_MINC |
+         CH32_DMA_CFGR_PSIZE_HWORD | CH32_DMA_CFGR_MSIZE_HWORD |
+         CH32_DMA_CFGR_CIRC | CH32_DMA_CFGR_TCIE | CH32_DMA_CFGR_TEIE;
+  if (dacp->depth > 1U) {
+    mode |= CH32_DMA_CFGR_HTIE;
+  }
+
+  ch32DmaStreamDisable(dacp->dma);
+  ch32DmaStreamSetMemory0(dacp->dma, dacp->samples);
+  ch32DmaStreamSetTransactionSize(dacp->dma, total);
+  ch32DmaStreamSetMode(dacp->dma, mode);
+  ch32DmaStreamClearInterrupt(dacp->dma);
+
+  DAC_DMACmd(DAC_Channel_1, ENABLE);
+  if (dual) {
+    DAC_DMACmd(DAC_Channel_2, ENABLE);
+  }
+
+  ch32DmaStreamEnable(dacp->dma);
+
+  return HAL_RET_SUCCESS;
 }
 
 /**
@@ -139,8 +252,21 @@ msg_t dac_lld_start_conversion(DACDriver *dacp) {
  * @notapi
  */
 void dac_lld_stop_conversion(DACDriver *dacp) {
+  DAC_InitTypeDef init;
 
-  (void)dacp;
+  if (dacp->dma != NULL) {
+    ch32DmaStreamDisable(dacp->dma);
+  }
+  DAC_DMACmd(DAC_Channel_1, DISABLE);
+  DAC_DMACmd(DAC_Channel_2, DISABLE);
+
+  /* Restoring the software triggered mode used by dacPutChannelX().*/
+  DAC_StructInit(&init);
+  init.DAC_Trigger = DAC_Trigger_Software;
+  init.DAC_WaveGeneration = DAC_WaveGeneration_None;
+  init.DAC_OutputBuffer = DAC_OutputBuffer_Enable;
+  DAC_Init(DAC_Channel_1, &init);
+  DAC_Init(DAC_Channel_2, &init);
 }
 
 #endif /* HAL_USE_DAC == TRUE */
