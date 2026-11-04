@@ -19,8 +19,17 @@
  * @brief   CH32H417 WSPI subsystem low level driver header.
  *
  * @details WSPI on the CH32H417 QSPI blocks (QSPI1/QSPI2), indirect
- *          command/send/receive via interrupt-driven FIFO service
- *          (no DMA) plus memory-mapped read mode.
+ *          command/send/receive plus memory-mapped read mode.
+ *
+ *          The data phase runs on the general purpose DMA, routed
+ *          through the DMAMUX request inputs 71/72 (RM table 10-2) and
+ *          paced by the unit CR.DMAEN (RM 37.4.1) at the FIFO threshold
+ *          level: one dynamically allocated channel per QSPI unit owns
+ *          the DR register. The command phase has no data and never
+ *          touches the channel. The frame itself is completed from the
+ *          QSPI interrupt (TCF), which then waits out and stops the
+ *          channel. Contrary to SDMMC (Ch.33) this controller has no
+ *          internal DMA.
  *
  *          The transfer option masks (WSPI_CFG_*) are defined here in
  *          the WCH CCR register positions (RM 37.4.6):
@@ -38,6 +47,7 @@
 
 #if (HAL_USE_WSPI == TRUE) || defined(__DOXYGEN__)
 
+#include "hal_lld.h"
 #include "ch32h417_qspi.h"
 
 /*===========================================================================*/
@@ -116,10 +126,25 @@
 #endif
 
 /**
+ * @brief   QSPI1 DMA channel priority (0..15), also used as the DMA
+ *          channel interrupt priority.
+ */
+#if !defined(CH32H417_WSPI_QSPI1_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_WSPI_QSPI1_DMA_PRIORITY    8
+#endif
+/**
+ * @brief   QSPI2 DMA channel priority (0..15), also used as the DMA
+ *          channel interrupt priority.
+ */
+#if !defined(CH32H417_WSPI_QSPI2_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_WSPI_QSPI2_DMA_PRIORITY    8
+#endif
+
+/**
  * @brief   QSPI kernel clock in Hz (both units sit on HB1 = HCLK).
  */
 #if !defined(CH32H417_QSPI_CLOCK) || defined(__DOXYGEN__)
-#define CH32H417_QSPI_CLOCK                 CH32H417_HCLK
+#define CH32H417_QSPI_CLOCK                 ch32h417_hclk
 #endif
 
 /**
@@ -149,6 +174,20 @@
 #error "WSPI driver activated but no QSPI unit assigned"
 #endif
 
+#if CH32H417_WSPI_USE_QSPI1 &&                                              \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_WSPI_QSPI1_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to QSPI1"
+#endif
+
+#if CH32H417_WSPI_USE_QSPI2 &&                                              \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_WSPI_QSPI2_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to QSPI2"
+#endif
+
+#if !defined(CH32_DMA_REQUIRED)
+#define CH32_DMA_REQUIRED
+#endif
+
 /*===========================================================================*/
 /* Driver data structures and types.                                         */
 /*===========================================================================*/
@@ -170,11 +209,10 @@
   QSPI_TypeDef              *qspi;                                          \
   /* Memory mapped window base of this unit.*/                             \
   uint32_t                  mapbase;                                        \
-  /* Transfer cursors.*/                                                   \
-  const uint8_t             *txbuf;                                         \
-  uint8_t                   *rxbuf;                                         \
-  size_t                    txrem;                                          \
-  size_t                    rxrem;
+  /* Dynamically allocated channel owning the DR register.*/               \
+  const ch32_dma_stream_t   *dma;                                            \
+  /* DMA mode bits, the transfer direction is added per transfer.*/         \
+  uint32_t                  dmamode;
 
 /*===========================================================================*/
 /* External declarations.                                                    */

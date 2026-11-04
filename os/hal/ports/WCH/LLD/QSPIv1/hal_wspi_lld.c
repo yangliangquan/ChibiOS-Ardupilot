@@ -18,11 +18,17 @@
  * @file    QSPIv1/hal_wspi_lld.c
  * @brief   CH32H417 WSPI subsystem low level driver source.
  *
- * @details Indirect mode operations are started by the CCR/AR/DR write
+ * @details Indirect mode operations are started by the CCR/AR write
  *          sequence (RM 37.3.8) and completed from the unit interrupt:
- *          the FIFO (SR.FLEVEL, 32 bytes) is serviced on the FTF
- *          threshold interrupt, TCF finishes the frame, TEF reports
- *          transfer errors. No DMA is used.
+ *          TCF finishes the frame, TEF/TOF report transfer errors.
+ *
+ *          The FIFO (SR.FLEVEL, 32 bytes) is not serviced from the FTF
+ *          interrupt anymore: the general purpose DMA owns the DR
+ *          register for the whole data phase, enabled through
+ *          CH32_QSPI_DMAEN and paced by the FTF threshold level. The
+ *          channel is armed before the frame is written and stopped
+ *          from the TCF handler once its counter has reached zero, so
+ *          the completion never races the last FIFO byte.
  *
  * @addtogroup WSPI
  * @{
@@ -39,6 +45,7 @@
 /* CR bits (ch32h417.h). */
 #define CH32_QSPI_EN                        QSPI_CR_EN
 #define CH32_QSPI_ABORT                     QSPI_CR_ABORT
+#define CH32_QSPI_DMAEN                     QSPI_CR_DMAEN
 #define CH32_QSPI_FTHRES(n)                 ((uint32_t)(n) << 8)
 #define CH32_QSPI_TCIE                      QSPI_CR_TCIE
 #define CH32_QSPI_FTIE                      QSPI_CR_FTIE
@@ -48,10 +55,8 @@
 /* SR bits. */
 #define CH32_QSPI_TEF                       QSPI_SR_TEF
 #define CH32_QSPI_TCF                       QSPI_SR_TCF
-#define CH32_QSPI_FTF                       QSPI_SR_FTF
 #define CH32_QSPI_TOF                       QSPI_SR_TOF
 #define CH32_QSPI_BUSY                      QSPI_SR_BUSY
-#define CH32_QSPI_FLEVEL_MASK               QSPI_SR_FLEVEL
 
 /* FCR bits. */
 #define CH32_QSPI_CTEF                      QSPI_FCR_CTEF
@@ -64,9 +69,6 @@
 #define CH32_QSPI_CCR_FMODE_WRITE           (0UL << 26)
 #define CH32_QSPI_CCR_FMODE_READ            (1UL << 26)
 #define CH32_QSPI_CCR_FMODE_MMAP            (3UL << 26)
-
-/* FIFO depth in bytes. */
-#define CH32_QSPI_FIFO_SIZE                 32U
 
 #define CH32_QSPI_IE_MASK   (CH32_QSPI_TCIE | CH32_QSPI_FTIE |           \
                              CH32_QSPI_TEIE)
@@ -89,19 +91,10 @@ WSPIDriver WSPID2 = { .qspi = QSPI2, .mapbase = CH32H417_QSPI2_MEMMAP_BASE };
 /*===========================================================================*/
 
 /**
- * @brief   Current FIFO level in bytes.
- */
-static uint32_t fifo_level(QSPI_TypeDef *q) {
-
-  return (q->SR & CH32_QSPI_FLEVEL_MASK) >> 8;
-}
-
-/**
  * @brief   Prepares the CCR/AR registers of a frame.
  * @note    Ordering per RM 37.3.8: CCR first, AR last (the AR write
  *          kicks the frame when an address phase exists; without an
- *          address the CCR write kicks command-only frames and the
- *          first DR write kicks indirect writes).
+ *          address the CCR write kicks command-only frames).
  */
 static void load_frame(WSPIDriver *wspip, const wspi_command_t *cmdp,
                        uint32_t fmode) {
@@ -122,29 +115,6 @@ static void load_frame(WSPIDriver *wspip, const wspi_command_t *cmdp,
 }
 
 /**
- * @brief   FIFO service for a running indirect transfer.
- */
-static void fifo_service(WSPIDriver *wspip) {
-  QSPI_TypeDef *q = wspip->qspi;
-  uint32_t level = fifo_level(q);
-
-  if (wspip->state == WSPI_SEND) {
-    while ((level < CH32_QSPI_FIFO_SIZE) && (wspip->txrem > 0U)) {
-      q->DR = *wspip->txbuf++;
-      wspip->txrem--;
-      level++;
-    }
-  }
-  else if (wspip->state == WSPI_RECEIVE) {
-    while ((level > 0U) && (wspip->rxrem > 0U)) {
-      *wspip->rxbuf++ = (uint8_t)q->DR;
-      wspip->rxrem--;
-      level--;
-    }
-  }
-}
-
-/**
  * @brief   Shared service routine for one QSPI unit.
  *
  * @notapi
@@ -154,25 +124,24 @@ static void serve_interrupt(WSPIDriver *wspip) {
   uint32_t sr = q->SR;
 
   if ((sr & (CH32_QSPI_TEF | CH32_QSPI_TOF)) != 0U) {
-    /* Transfer error or timeout: clear the frame state and signal
+    /* Transfer error or timeout: stop the channel before reporting so
+       no request is left pending, clear the frame state and signal
        failure through the portable macro.*/
     q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTOF | CH32_QSPI_CTCF;
     q->CR &= (uint32_t)~CH32_QSPI_IE_MASK;
+    ch32DmaStreamDisable(wspip->dma);
     _wspi_error_code(wspip);
     return;
   }
 
-  if ((sr & CH32_QSPI_FTF) != 0U) {
-    fifo_service(wspip);
-  }
-
   if ((sr & CH32_QSPI_TCF) != 0U) {
-    if (wspip->state == WSPI_RECEIVE) {
-      /* Final drain: the complete frame is in the FIFO now. */
-      while ((fifo_level(q) > 0U) && (wspip->rxrem > 0U)) {
-        *wspip->rxbuf++ = (uint8_t)q->DR;
-        wspip->rxrem--;
+    if ((wspip->state == WSPI_SEND) || (wspip->state == WSPI_RECEIVE)) {
+      /* TCF means the frame is over, not that the FIFO has been
+         drained: let the counter run out before shutting the channel
+         down, otherwise the last bytes are dropped.*/
+      while (wspip->dma->channel->CNTR > 0U) {
       }
+      ch32DmaStreamDisable(wspip->dma);
     }
     q->FCR = CH32_QSPI_CTCF;
     q->CR &= (uint32_t)~CH32_QSPI_IE_MASK;
@@ -246,10 +215,11 @@ void wspi_lld_start(WSPIDriver *wspip) {
   QSPI_TypeDef *q = wspip->qspi;
   uint32_t presc;
 
-  /* f_sck = CH32H417_QSPI_CLOCK / (2 * (presc + 1)) (F7 style). */
+  /* f_sck = CH32H417_QSPI_CLOCK / (presc + 1), the QSPI prescaler
+     divides FHCLK (RM 26.2.4). */
   presc = (CH32H417_QSPI_CLOCK +
-           (2U * wspip->config->clock_hz) - 1U) /
-          (2U * wspip->config->clock_hz);
+           wspip->config->clock_hz - 1U) /
+          wspip->config->clock_hz;
   if (presc > 0U) {
     presc -= 1U;
   }
@@ -258,23 +228,44 @@ void wspi_lld_start(WSPIDriver *wspip) {
   }
 
   if (wspip->state == WSPI_STOP) {
+    /* First activation: DMA channel allocation and routing. */
 #if (CH32H417_WSPI_USE_QSPI1 == TRUE)
     if (wspip == &WSPID1) {
       RCC_HB1PeriphClockCmd(RCC_HB1Periph_QSPI1, ENABLE);
+      wspip->dma = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
+                                       CH32H417_WSPI_QSPI1_DMA_PRIORITY,
+                                       NULL, NULL);
+      osalDbgAssert(wspip->dma != NULL, "unable to allocate stream");
+      ch32DmaStreamSetRequest(wspip->dma, CH32_DMAMUX_QSPI1);
+      wspip->dmamode = CH32_DMA_CFGR_PL(CH32H417_WSPI_QSPI1_DMA_PRIORITY) |
+                       CH32_DMA_CFGR_PSIZE_BYTE | CH32_DMA_CFGR_MSIZE_BYTE;
     }
 #endif
 #if (CH32H417_WSPI_USE_QSPI2 == TRUE)
     if (wspip == &WSPID2) {
       RCC_HB1PeriphClockCmd(RCC_HB1Periph_QSPI2, ENABLE);
+      wspip->dma = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
+                                       CH32H417_WSPI_QSPI2_DMA_PRIORITY,
+                                       NULL, NULL);
+      osalDbgAssert(wspip->dma != NULL, "unable to allocate stream");
+      ch32DmaStreamSetRequest(wspip->dma, CH32_DMAMUX_QSPI2);
+      wspip->dmamode = CH32_DMA_CFGR_PL(CH32H417_WSPI_QSPI2_DMA_PRIORITY) |
+                       CH32_DMA_CFGR_PSIZE_BYTE | CH32_DMA_CFGR_MSIZE_BYTE;
     }
 #endif
+    /* The DR address is fixed for the lifetime of the channel, the
+       direction and the buffer change from transfer to transfer.*/
+    ch32DmaStreamSetPeripheral(wspip->dma, &wspip->qspi->DR);
+
     /* Disable a possibly running unit before reconfiguration. */
     q->CR = 0U;
   }
 
-  /* WSPI setup and enable: CR without EN, DCR, then EN (vendor model).*/
+  /* WSPI setup and enable: CR without EN, DCR, then EN (vendor model).
+     DMAEN gates the FIFO threshold requests for the whole data phase.*/
   q->CR  = CH32_QSPI_PRESCALER(presc) |
-           CH32_QSPI_FTHRES(CH32H417_QSPI_FTHRES);
+           CH32_QSPI_FTHRES(CH32H417_QSPI_FTHRES) |
+           CH32_QSPI_DMAEN;
   q->DCR = ((uint32_t)wspip->config->fsize << 16);  /* CSHT=1, CKMODE=0 */
   q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
   q->CR |= CH32_QSPI_EN;
@@ -289,6 +280,12 @@ void wspi_lld_stop(WSPIDriver *wspip) {
 
   if (wspip->state == WSPI_READY) {
     wspip->qspi->CR = 0U;
+
+    /* Releasing the channel.*/
+    if (wspip->dma != NULL) {
+      ch32DmaStreamFreeI(wspip->dma);
+      wspip->dma = NULL;
+    }
 
 #if (CH32H417_WSPI_USE_QSPI1 == TRUE)
     if (wspip == &WSPID1) {
@@ -311,6 +308,9 @@ void wspi_lld_stop(WSPIDriver *wspip) {
 void wspi_lld_command(WSPIDriver *wspip, const wspi_command_t *cmdp) {
   QSPI_TypeDef *q = wspip->qspi;
 
+  /* No data phase: the channel stays out of the picture, DLR=0 tells
+     the unit not to expect any byte.*/
+  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
   q->CR |= CH32_QSPI_IE_MASK;
   q->DLR = 0U;
   load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
@@ -325,17 +325,24 @@ void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
                    size_t n, const uint8_t *txbuf) {
   QSPI_TypeDef *q = wspip->qspi;
 
-  wspip->txbuf = txbuf;
-  wspip->txrem = n;
+  /* Flags are cleared before the channel is armed so a leftover FTF
+     from the previous frame cannot predate the new one.*/
+  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+
+  ch32DmaStreamSetMemory0(wspip->dma, txbuf);
+  ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);
+  ch32DmaStreamSetMode(wspip->dma, wspip->dmamode |
+                                   CH32_DMA_CFGR_DIR_M2P |
+                                   CH32_DMA_CFGR_MINC);
 
   q->CR |= CH32_QSPI_IE_MASK;
   q->DLR = (uint32_t)(n - 1U);
   load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
 
-  /* The first DR write kicks the frame when no address phase exists,
-     with an address the AR write kicked it already; either way data is
-     now pushed into the FIFO, further bytes follow on FTF. */
-  fifo_service(wspip);
+  /* With an address the AR write already started the frame, without one
+     the first DR write starts it - either way the empty FIFO holds FTF
+     now and the DMA takes over the data phase from here.*/
+  ch32DmaStreamEnable(wspip->dma);
 }
 
 /**
@@ -347,12 +354,21 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
                       size_t n, uint8_t *rxbuf) {
   QSPI_TypeDef *q = wspip->qspi;
 
-  wspip->rxbuf = rxbuf;
-  wspip->rxrem = n;
+  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+
+  ch32DmaStreamSetMemory0(wspip->dma, rxbuf);
+  ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);
+  ch32DmaStreamSetMode(wspip->dma, wspip->dmamode |
+                                   CH32_DMA_CFGR_DIR_P2M |
+                                   CH32_DMA_CFGR_MINC);
 
   q->CR |= CH32_QSPI_IE_MASK;
   q->DLR = (uint32_t)(n - 1U);
   load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_READ);
+
+  /* The frame starts on the CCR/AR write, bytes reach the FIFO at
+     FTHRES and are drained by the DMA until DLR is exhausted.*/
+  ch32DmaStreamEnable(wspip->dma);
 }
 
 #if (WSPI_SUPPORTS_MEMMAP == TRUE) || defined(__DOXYGEN__)
