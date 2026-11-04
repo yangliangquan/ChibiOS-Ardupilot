@@ -19,10 +19,16 @@
  * @brief   CH32H417 SDC subsystem low level driver source.
  *
  * @details Two backends, selected in mcuconf.h:
- *          - CH32H417_SDC_USE_SDIO: classic SDIO block (F1 compatible),
- *            interrupt driven FIFO PIO paced by HWFC_EN.
- *          - CH32H417_SDC_USE_SDMMC: Ch.33 SD/eMMC controller using
- *            its internal DMA (DMA_BEG1/BLOCK_CFG engine).
+ *          - CH32H417_SDC_USE_SDIO: classic SDIO block (F1 compatible).
+ *            Its data phase runs on the general purpose DMA through
+ *            DMAMUX request 111, gated by DCTRL.DMAEN; the ISR only
+ *            reports errors and DATAEND, the FIFO itself is never
+ *            touched by software.
+ *          - CH32H417_SDC_USE_SDMMC: Ch.33 SD/eMMC controller using its
+ *            OWN internal DMA (DMA_BEG1/BLOCK_CFG engine) with
+ *            CONTROL.DMAEN. This controller has no DMAMUX request line
+ *            (RM table 10-2), so no general purpose channel is ever
+ *            allocated for it.
  *
  * @addtogroup SDC
  * @{
@@ -31,6 +37,7 @@
 #include <string.h>
 
 #include "hal.h"
+#include "hal_lld.h"
 
 #if (HAL_USE_SDC == TRUE) || defined(__DOXYGEN__)
 
@@ -63,10 +70,11 @@
 #define CH32_SDIO_DCTRL_DTEN                (1UL << 0)
 #define CH32_SDIO_DCTRL_DTDIR               (1UL << 1)
 #define CH32_SDIO_DCTRL_DTMODE              (1UL << 2)
+#define CH32_SDIO_DCTRL_DMAEN               (1UL << 3)
 #define CH32_SDIO_DCTRL_DBLOCKSIZE(n)       ((uint32_t)(n) << 4)
 
 /* All write-one-to-clear SDIO status flags. */
-#define CH32_SDIO_ICR_ALL_FLAGS             0x00FFFFFFUL
+#define CH32_SDIO_ICR_ALL_FLAGS             0x00C007FFUL
 
 /* Errors part of the SDIO STA register. */
 #define CH32_SDIO_STA_ERROR_MASK                                                 \
@@ -129,7 +137,7 @@ static const SDCConfig sdc_default_cfg = {
 /**
  * @brief   Calculates a CLKCR divider for the specified card frequency.
  * @note    SDIO_CK = CH32H417_SDIO_CLOCK / (CLKDIV + 2), 8-bit CLKDIV,
- *          clamped at 255 (slowest achievable, ~1.56MHz at HCLK=400MHz).
+ *          clamped at 255 (slowest achievable, ~390kHz at HCLK=100MHz).
  */
 static uint32_t sdc_lld_clkdiv(SDCDriver *sdcp, uint32_t f) {
   uint32_t div;
@@ -155,7 +163,7 @@ static uint32_t sdc_lld_clkdiv(SDCDriver *sdcp, uint32_t f) {
  * @brief   Common CLKCR assembly: divider + clock options.
  */
 static uint32_t sdc_lld_clkcr(SDCDriver *sdcp, uint32_t f) {
-  uint32_t clkcr = sdc_lld_clkdiv(sdcp, f) | CH32_SDIO_CLKCR_CLKEN;
+  uint32_t clkcr = sdc_lld_clkdiv(sdcp, f);
 
 #if CH32H417_SDC_HWFC
   clkcr |= CH32_SDIO_CLKCR_HWFC_EN;
@@ -177,6 +185,22 @@ static uint32_t sdc_lld_get_timeout(SDCDriver *sdcp, uint32_t ms) {
 }
 
 /**
+ * @brief   Arms the DMA channel for one data phase.
+ * @note    Word on both sides: every SDIO transfer length is a word
+ *          multiple and the FIFO moves one 32-bit word per request.
+ */
+static void sdc_lld_arm_dma(SDCDriver *sdcp, const void *buf,
+                            uint32_t bytes, bool tocard) {
+
+  ch32DmaStreamSetMemory0(sdcp->dma, buf);
+  ch32DmaStreamSetTransactionSize(sdcp->dma, bytes / 4U);
+  ch32DmaStreamSetMode(sdcp->dma, sdcp->dmamode |
+                                   (tocard ? CH32_DMA_CFGR_DIR_M2P :
+                                             CH32_DMA_CFGR_DIR_P2M));
+  ch32DmaStreamEnable(sdcp->dma);
+}
+
+/**
  * @brief   Prepares to handle a byte-count read (special registers).
  *
  * @return              The operation status.
@@ -186,61 +210,30 @@ static uint32_t sdc_lld_get_timeout(SDCDriver *sdcp, uint32_t ms) {
 static bool sdc_lld_prepare_read_bytes(SDCDriver *sdcp,
                                        uint8_t *buf, uint32_t bytes) {
   osalDbgCheck(bytes < 0x1000000U);
+  osalDbgCheck((bytes & 3U) == 0U);
 
   sdcp->sdio->DTIMER = sdc_lld_get_timeout(sdcp, CH32H417_SDC_READ_TIMEOUT);
 
   if (_sdc_wait_for_transfer_state(sdcp))
     return HAL_FAILED;
 
-  sdcp->rxptr  = buf;
-  sdcp->txptr  = NULL;
-  sdcp->remain = bytes;
-
   sdcp->sdio->ICR   = CH32_SDIO_ICR_ALL_FLAGS;
+  /* The FIFO half flags stay masked out: the DMA drains the FIFO and
+     only errors and DATAEND need to reach the waiting thread.*/
   sdcp->sdio->MASK  = SDIO_IT_DCRCFAIL | SDIO_IT_DTIMEOUT |
                       SDIO_IT_STBITERR | SDIO_IT_RXOVERR |
-                      SDIO_IT_RXFIFOHF  | SDIO_IT_RXDAVL |
                       SDIO_IT_DATAEND;
   sdcp->sdio->DLEN  = bytes;
 
+  /* The channel is armed before DTEN so no request is lost.*/
+  sdc_lld_arm_dma(sdcp, buf, bytes, false);
+
   sdcp->sdio->DCTRL = CH32_SDIO_DCTRL_DTDIR |
                       CH32_SDIO_DCTRL_DTMODE |
+                      CH32_SDIO_DCTRL_DMAEN |
                       CH32_SDIO_DCTRL_DTEN;
 
   return HAL_SUCCESS;
-}
-
-/**
- * @brief   Drains the RX FIFO into the PIO cursor (bounded).
- * @note    The FIFO pops one 32-bit word per read, all transfer sizes
- *          are word multiples so the cursor advances four at a time.
- */
-static void sdc_lld_rx_service(SDCDriver *sdcp) {
-
-  while ((sdcp->remain > 0U) &&
-         ((sdcp->sdio->STA & SDIO_FLAG_RXDAVL) != 0U)) {
-    uint32_t word = sdcp->sdio->FIFO;
-
-    memcpy(sdcp->rxptr, &word, 4U);
-    sdcp->rxptr += 4;
-    sdcp->remain -= 4U;
-  }
-}
-
-/**
- * @brief   Prefills the TX FIFO from the PIO cursor (bounded).
- */
-static void sdc_lld_tx_service(SDCDriver *sdcp) {
-
-  while ((sdcp->remain > 0U) &&
-         ((sdcp->sdio->STA & SDIO_FLAG_TXDAVL) != 0U)) {
-    uint32_t word;
-
-    memcpy(&word, sdcp->txptr, 4U);
-    sdcp->txptr += 4;
-    sdcp->sdio->FIFO = word;
-    sdcp->remain -= 4U;
-  }
 }
 
 /**
@@ -258,11 +251,15 @@ static bool sdc_lld_wait_transaction_end(SDCDriver *sdcp, uint32_t n,
   osalSysUnlock();
 
   if ((sdcp->sdio->STA & SDIO_FLAG_DATAEND) == 0U) {
+    ch32DmaStreamDisable(sdcp->dma);
     return HAL_FAILED;
   }
 
-  /* Final drain: DATAEND can arrive while words are still in the FIFO. */
-  sdc_lld_rx_service(sdcp);
+  /* DATAEND can be raised while the tail of the transfer is still
+     crossing the FIFO, so the counter has to run out first.*/
+  while (sdcp->dma->channel->CNTR > 0U) {
+  }
+  ch32DmaStreamDisable(sdcp->dma);
 
   sdcp->sdio->DCTRL = 0U;
   sdcp->sdio->ICR   = CH32_SDIO_ICR_ALL_FLAGS;
@@ -305,6 +302,8 @@ static void sdc_lld_error_cleanup(SDCDriver *sdcp,
                                   uint32_t n,
                                   uint32_t *resp) {
   uint32_t sta;
+
+  ch32DmaStreamDisable(sdcp->dma);
 
   sta                = sdcp->sdio->STA;
   sdcp->sdio->ICR   = sta;
@@ -584,8 +583,9 @@ static void sdmmc_error_cleanup(SDCDriver *sdcp, uint32_t n) {
 #if (CH32H417_SDC_USE_SDIO == TRUE) || defined(__DOXYGEN__)
 /**
  * @brief   SDIO IRQ handler.
- * @details Services the RX/TX FIFOs while a transfer is running and
- *          releases the waiting thread on completion or error.
+ * @details Reports transfer completion and errors and releases the
+ *          waiting thread; the data itself is moved by the DMA so the
+ *          FIFO is never serviced from here.
  *
  * @isr
  */
@@ -596,18 +596,7 @@ OSAL_IRQ_HANDLER(SDIO_IRQHandler) {
 
   osalSysLockFromISR();
 
-  if ((sta & (SDIO_FLAG_RXFIFOHF | SDIO_FLAG_RXDAVL)) != 0U) {
-    sdc_lld_rx_service(&SDCD1);
-  }
-  if (((sta & (SDIO_FLAG_TXFIFOHE | SDIO_FLAG_TXDAVL)) != 0U) &&
-      (SDCD1.txptr != NULL)) {
-    sdc_lld_tx_service(&SDCD1);
-  }
-
   if ((sta & (CH32_SDIO_STA_ERROR_MASK | CH32_SDIO_STA_DONE_MASK)) != 0U) {
-    if ((sta & SDIO_FLAG_DATAEND) != 0U) {
-      sdc_lld_rx_service(&SDCD1);
-    }
     SDIO->MASK = 0U;
     osalThreadResumeI(&SDCD1.thread, MSG_OK);
   }
@@ -655,9 +644,8 @@ void sdc_lld_init(void) {
 
   sdcObjectInit(&SDCD1);
   SDCD1.thread  = NULL;
-  SDCD1.remain  = 0U;
-  SDCD1.rxptr   = NULL;
-  SDCD1.txptr   = NULL;
+  SDCD1.dma     = NULL;
+  SDCD1.dmamode = 0U;
 #if (CH32H417_SDC_USE_SDIO == TRUE)
   SDCD1.sdio    = SDIO;
   SDCD1.sdio->MASK = 0U;
@@ -686,6 +674,18 @@ void sdc_lld_start(SDCDriver *sdcp) {
 #if (CH32H417_SDC_USE_SDIO == TRUE)
   if (sdcp->state == BLK_STOP) {
     RCC_HB2PeriphClockCmd(RCC_HB2Periph_SDIO, ENABLE);
+
+    /* First activation: dynamically allocated channel routed to the
+       SDIO FIFO, the direction is selected per transfer.*/
+    sdcp->dma = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
+                                    CH32H417_SDC_SDIO_DMA_PRIORITY,
+                                    NULL, NULL);
+    osalDbgAssert(sdcp->dma != NULL, "unable to allocate stream");
+    ch32DmaStreamSetRequest(sdcp->dma, CH32_DMAMUX_SDIO);
+    ch32DmaStreamSetPeripheral(sdcp->dma, &sdcp->sdio->FIFO);
+    sdcp->dmamode = CH32_DMA_CFGR_PL(CH32H417_SDC_SDIO_DMA_PRIORITY) |
+                    CH32_DMA_CFGR_PSIZE_WORD | CH32_DMA_CFGR_MSIZE_WORD |
+                    CH32_DMA_CFGR_MINC;
   }
 
   sdcp->sdio->POWER  = 0U;
@@ -727,6 +727,12 @@ void sdc_lld_stop(SDCDriver *sdcp) {
     sdcp->sdio->DTIMER = 0U;
     sdcp->sdio->MASK   = 0U;
 
+    /* Releasing the channel.*/
+    if (sdcp->dma != NULL) {
+      ch32DmaStreamFreeI(sdcp->dma);
+      sdcp->dma = NULL;
+    }
+
     RCC_HB2PeriphClockCmd(RCC_HB2Periph_SDIO, DISABLE);
 #endif
 #if (CH32H417_SDC_USE_SDMMC == TRUE)
@@ -753,6 +759,9 @@ void sdc_lld_start_clk(SDCDriver *sdcp) {
   sdcp->sdio->CLKCR  = (clkcr & ~CH32_SDIO_CLKCR_WIDBUS_0 &
                                  ~CH32_SDIO_CLKCR_WIDBUS_1);
   sdcp->sdio->POWER |= CH32_SDIO_POWER_PWRCTRL;
+  CH32H417_DSB();
+    sdcp->sdio->CLKCR |= CH32_SDIO_CLKCR_CLKEN;
+
 #endif
 #if (CH32H417_SDC_USE_SDMMC == TRUE)
   (void)sdcp;
@@ -1008,22 +1017,20 @@ static bool sdc_lld_read_aligned(SDCDriver *sdcp, uint32_t startblk,
   if (_sdc_wait_for_transfer_state(sdcp))
     return HAL_FAILED;
 
-  sdcp->rxptr  = buf;
-  sdcp->txptr  = NULL;
-  sdcp->remain = bytes;
-
   sdcp->sdio->ICR   = CH32_SDIO_ICR_ALL_FLAGS;
   sdcp->sdio->MASK  = SDIO_IT_DCRCFAIL | SDIO_IT_DTIMEOUT |
                       SDIO_IT_STBITERR | SDIO_IT_RXOVERR |
-                      SDIO_IT_RXFIFOHF | SDIO_IT_RXDAVL |
                       SDIO_IT_DATAEND;
   sdcp->sdio->DLEN  = bytes;
 
   if (sdc_lld_prepare_read(sdcp, startblk, blocks, resp) == true)
     goto error;
 
+  sdc_lld_arm_dma(sdcp, buf, bytes, false);
+
   sdcp->sdio->DCTRL = CH32_SDIO_DCTRL_DTDIR |
                       CH32_SDIO_DCTRL_DBLOCKSIZE(9) |
+                      CH32_SDIO_DCTRL_DMAEN |
                       CH32_SDIO_DCTRL_DTEN;
 
   if (sdc_lld_wait_transaction_end(sdcp, blocks, resp) == true)
@@ -1083,24 +1090,21 @@ static bool sdc_lld_write_aligned(SDCDriver *sdcp, uint32_t startblk,
   if (_sdc_wait_for_transfer_state(sdcp))
     return HAL_FAILED;
 
-  sdcp->rxptr  = NULL;
-  sdcp->txptr  = buf;
-  sdcp->remain = bytes;
-
   sdcp->sdio->ICR   = CH32_SDIO_ICR_ALL_FLAGS;
   sdcp->sdio->MASK  = SDIO_IT_DCRCFAIL | SDIO_IT_DTIMEOUT |
                       SDIO_IT_STBITERR | SDIO_IT_TXUNDERR |
-                      SDIO_IT_TXFIFOHE | SDIO_IT_TXDAVL |
                       SDIO_IT_DATAEND;
   sdcp->sdio->DLEN  = bytes;
-
-  /* Prefill the FIFO before the data path starts. */
-  sdc_lld_tx_service(sdcp);
 
   if (sdc_lld_prepare_write(sdcp, startblk, blocks, resp) == true)
     goto error;
 
+  /* Arm the channel only now: RM SDIO requires the command to be
+     answered before the data path can start pushing the FIFO.*/
+  sdc_lld_arm_dma(sdcp, buf, bytes, true);
+
   sdcp->sdio->DCTRL = CH32_SDIO_DCTRL_DBLOCKSIZE(9) |
+                      CH32_SDIO_DCTRL_DMAEN |
                       CH32_SDIO_DCTRL_DTEN;
 
   if (sdc_lld_wait_transaction_end(sdcp, blocks, resp) == true)

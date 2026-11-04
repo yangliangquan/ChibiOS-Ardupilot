@@ -18,17 +18,28 @@
  * @file    SDIOv1/hal_sdc_lld.h
  * @brief   CH32H417 SDC subsystem low level driver header.
  *
- * @details SD card driver on the classic SDIO block (F1-compatible
- *          register set with WCH extras FIFOCNT/DCTRL2/HWFC).
- *          Data path is interrupt-driven FIFO PIO (no DMA), paced by
- *          the hardware flow control (HWFC_EN).
+ * @details SD card driver with two mutually exclusive backends:
  *
- *          Clock limitation at HCLK=400MHz: SDIO_CK = HCLK/(CLKDIV+2)
- *          with an 8-bit CLKDIV, so the slowest card clock is
- *          ~1.56MHz - the SD spec identification clock of 400kHz is
- *          NOT reachable from a 400MHz HCLK (RM note: init clock
- *          should be <400kHz). Flagged for hardware validation; the
- *          SDMMC backend (Ch.33) provides a proper low-speed mode.
+ *          - CH32H417_SDC_USE_SDIO: the classic SDIO block (F1
+ *            compatible register set with WCH extras FIFOCNT/DCTRL2/
+ *            HWFC). Its data phase runs on the general purpose DMA via
+ *            the DMAMUX request input 111 (RM table 10-2), paced by
+ *            DCTRL.DMAEN (RM 32.6.9) at the FIFO half level, one
+ *            dynamically allocated channel owns the FIFO register.
+ *          - CH32H417_SDC_USE_SDMMC: the Ch.33 SD/eMMC controller. This
+ *            block has its OWN internal DMA (R32_EMMC_DMA_BEG1/BEG2
+ *            plus the BLOCK_CFG engine, CONTROL.DMAEN), it does not go
+ *            through the DMAMUX at all - the request table has no entry
+ *            for it. Never assign a general purpose channel here.
+ *
+ *          Clock limitation of the SDIO backend:
+ *          SDIO_CK = HCLK/(CLKDIV+2) with an 8-bit CLKDIV, so the
+ *          slowest card clock is HCLK/257. With the default tree
+ *          (HCLK=100MHz) that is ~389kHz, which stays below the SD
+ *          spec identification clock of 400kHz (RM note: init clock
+ *          should be <400kHz). Raising HCLK makes the identification
+ *          clock unreachable, in that case the SDMMC backend (Ch.33)
+ *          provides a proper low-speed mode.
  *
  * @addtogroup SDC
  * @{
@@ -39,6 +50,7 @@
 
 #if (HAL_USE_SDC == TRUE) || defined(__DOXYGEN__)
 
+#include "hal_lld.h"
 #include "ch32h417_sdio.h"
 #include "ch32h417_sdmmc.h"
 
@@ -68,17 +80,17 @@
  * @brief   Card kernel clock in Hz (SDIO is fed by the core HCLK).
  */
 #if !defined(CH32H417_SDIO_CLOCK) || defined(__DOXYGEN__)
-#define CH32H417_SDIO_CLOCK                 CH32H417_HCLK
+#define CH32H417_SDIO_CLOCK                 ch32h417_hclk
 #endif
 
 /**
  * @brief   SDMMC controller input clock in Hz.
  * @note    The SDMMC block is clocked by SYSPLL_SEL (=PLL_CLK, the
- *          main PLL output) out of reset; set to the actual PLL
- *          frequency (equals HCLK with the default clock tree).
+ *          main PLL output) out of reset, it is not clocked by HCLK
+ *          (RM 33.2.2 and RM 3.3.5).
  */
 #if !defined(CH32H417_SDMMC_CLOCK) || defined(__DOXYGEN__)
-#define CH32H417_SDMMC_CLOCK                CH32H417_HCLK
+#define CH32H417_SDMMC_CLOCK                ch32h417_pllclk
 #endif
 
 /**
@@ -90,10 +102,20 @@
 
 /**
  * @brief   Hardware flow control (RXFIFOF/TXFIFOE clock pacing).
- * @note    Recommended for the PIO data path, see RM SDIO CLKCR.HWFC_EN.
+ * @note    Recommended for the SDIO data path, see RM SDIO CLKCR.HWFC_EN.
  */
 #if !defined(CH32H417_SDC_HWFC) || defined(__DOXYGEN__)
-#define CH32H417_SDC_HWFC                   TRUE
+#define CH32H417_SDC_HWFC                   FALSE
+#endif
+
+/**
+ * @brief   SDIO backend DMA channel priority (0..15), also used as the
+ *          DMA channel interrupt priority.
+ * @note    Only the SDIO backend uses a general purpose channel, the
+ *          SDMMC backend has its own internal DMA.
+ */
+#if !defined(CH32H417_SDC_SDIO_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_SDC_SDIO_DMA_PRIORITY      8
 #endif
 
 /**
@@ -158,6 +180,15 @@
 
 #if CH32H417_SDC_USE_SDIO && CH32H417_SDC_USE_SDMMC
 #error "only one SDC backend can be active"
+#endif
+
+#if CH32H417_SDC_USE_SDIO &&                                                  \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_SDC_SDIO_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to SDIO"
+#endif
+
+#if CH32H417_SDC_USE_SDIO && !defined(CH32_DMA_REQUIRED)
+#define CH32_DMA_REQUIRED
 #endif
 
 /*===========================================================================*/
@@ -251,17 +282,15 @@ struct SDCDriver {
    */
   SDMMC_TypeDef             *sdmmc;
   /**
-   * @brief PIO transfer cursor (bytes still to move via the FIFO).
+   * @brief Dynamically allocated channel of the SDIO backend (Ch.32).
+   * @note    NULL with the SDMMC backend, which has an internal DMA.
    */
-  uint32_t                  remain;
+  const ch32_dma_stream_t   *dma;
   /**
-   * @brief PIO read destination.
+   * @brief DMA mode bits of the SDIO backend, the transfer direction
+   *        is added per transfer.
    */
-  uint8_t                   *rxptr;
-  /**
-   * @brief PIO write source.
-   */
-  const uint8_t             *txptr;
+  uint32_t                  dmamode;
   /**
    * @brief Buffer for unaligned/special operations.
    * @note    16-byte aligned, the SDMMC internal DMA requires it.
