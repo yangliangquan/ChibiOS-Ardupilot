@@ -60,6 +60,26 @@
 #if !defined(CH32H417_I2C1_CLOCK_SPEED) || defined(__DOXYGEN__)
 #define CH32H417_I2C1_CLOCK_SPEED           100000U
 #endif
+
+/**
+ * @brief   Per-unit DMA channel IRQ priority.
+ * @note    The channels themselves are allocated dynamically at driver start,
+ *          the DMAMUX routing allows any channel to be connected to any
+ *          request, so no RX/TX channel has to be configured here.
+ * @{
+ */
+#if !defined(CH32H417_I2C_I2C1_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_I2C_I2C1_DMA_PRIORITY      8
+#endif
+#if !defined(CH32H417_I2C_I2C2_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_I2C_I2C2_DMA_PRIORITY      8
+#endif
+#if !defined(CH32H417_I2C_I2C3_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_I2C_I2C3_DMA_PRIORITY      8
+#endif
+#if !defined(CH32H417_I2C_I2C4_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_I2C_I2C4_DMA_PRIORITY      8
+#endif
 /** @} */
 
 /*===========================================================================*/
@@ -73,6 +93,28 @@
 
 #if (CH32H417_I2C1_CLOCK_SPEED > 400000U)
 #error "CH32H417_I2C1_CLOCK_SPEED above fast mode"
+#endif
+
+/* The driver always moves the data phase through DMA.*/
+#if !defined(CH32_DMA_REQUIRED)
+#define CH32_DMA_REQUIRED
+#endif
+
+#if CH32H417_I2C_USE_I2C1 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_I2C_I2C1_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to I2C1"
+#endif
+#if CH32H417_I2C_USE_I2C2 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_I2C_I2C2_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to I2C2"
+#endif
+#if CH32H417_I2C_USE_I2C3 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_I2C_I2C3_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to I2C3"
+#endif
+#if CH32H417_I2C_USE_I2C4 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_I2C_I2C4_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to I2C4"
 #endif
 
 /*===========================================================================*/
@@ -112,7 +154,10 @@ typedef struct hal_i2c_driver I2CDriver;
  */
 #define I2C_DRIVER_EXT_FIELDS                                              \
   /* Pointer to the I2C registers block.*/                                 \
-  I2C_TypeDef               *i2c;
+  I2C_TypeDef               *i2c;                                          \
+  /* Associated DMA channels.*/                                            \
+  const ch32_dma_stream_t   *dmarx;                                        \
+  const ch32_dma_stream_t   *dmatx;
 
 /**
  * @brief   Structure representing an I2C driver.
