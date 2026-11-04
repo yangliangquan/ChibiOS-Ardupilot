@@ -48,7 +48,7 @@ RTCDriver RTCD1;
 
 #if (CH32H417_RTC_USE_RTC1 == TRUE) || defined(__DOXYGEN__)
 /**
- * @brief   Bounded poll limit (~0.3s at HCLK=400MHz).
+ * @brief   Bounded poll limit (~0.3s at the 400MHz core clock).
  * @note    All RTC flag waits are bounded: a missing RTC clock must
  *          never wedge the boot or an ISR (the vendor helpers loop
  *          forever on a dead clock).

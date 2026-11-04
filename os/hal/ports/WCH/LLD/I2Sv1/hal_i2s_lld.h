@@ -74,11 +74,13 @@
  * @name    Configuration options
  * @{
  */
+#include "hal_lld.h"
+
 /**
- * @brief   I2S unit enable switches (the units are SPI2/SPI3).
+ * @brief   I2S kernel clock in Hz.
  */
-#if !defined(CH32H417_I2S_USE_SPI2) || defined(__DOXYGEN__)
-#define CH32H417_I2S_USE_SPI2               FALSE
+#if !defined(CH32H417_I2S_CLOCK) || defined(__DOXYGEN__)
+#define CH32H417_I2S_CLOCK                  ch32h417_hclk
 #endif
 #if !defined(CH32H417_I2S_USE_SPI3) || defined(__DOXYGEN__)
 #define CH32H417_I2S_USE_SPI3               FALSE

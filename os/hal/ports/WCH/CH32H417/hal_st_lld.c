@@ -102,7 +102,7 @@ void st_lld_init(void) {
   ST_TIM->CTLR1 = 0;
   ST_TIM->CTLR2 = 0;
   ST_TIM->SMCFGR = 0;
-  ST_TIM->PSC = (uint16_t)((CH32H417_TIMCLK1 / OSAL_ST_FREQUENCY) - 1U);
+  ST_TIM->PSC = (uint16_t)((ch32h417_timclk1 / OSAL_ST_FREQUENCY) - 1U);
   ST_TIM->ATRLR = 0xFFFFU;
   ST_TIM->CHCTLR1 = 0;
   ST_TIM->CH1CVR = 0;
@@ -118,7 +118,7 @@ void st_lld_init(void) {
 #endif /* OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING */
 
 #if OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC
-  uint32_t period = CH32H417_HCLK / OSAL_ST_FREQUENCY;
+  uint32_t period = ch32h417_hclk / OSAL_ST_FREQUENCY;
 
   /* Periodic tick on the core SysTick1 timer (IRQ13). */
   SysTick1->CTLR = 0;

@@ -179,9 +179,10 @@
 
 /**
  * @brief   MII management clock divider (MACMIIAR.CR field).
- * @note    Vendor header exposes the F1 values (Div42/16/26). At
- *          HCLK=400MHz Div42 yields MDC=HCLK/42 (9.5MHz) which exceeds
- *          the usual 2.5MHz PHY limit - verify on hardware and adjust
+ * @note    Vendor header exposes the F1 values (Div42/16/26). The MDC
+ *          clock comes from the Ethernet clock domain (ETHCLK_125M,
+ *          RM 3.3.5), not from HCLK: Div42 yields MDC=125MHz/84
+ *          (1.49MHz) which is within the usual 2.5MHz PHY limit.
  *          (RM ch31 has no register table for MACMIIAR).
  */
 #if !defined(CH32H417_MAC_MDC_CR) || defined(__DOXYGEN__)

@@ -32,6 +32,8 @@
 #ifndef HAL_ST_LLD_H
 #define HAL_ST_LLD_H
 
+#include "hal_lld.h"
+
 #if (OSAL_ST_MODE != OSAL_ST_MODE_NONE) || defined(__DOXYGEN__)
 
 /*===========================================================================*/
@@ -74,6 +76,10 @@
 
 #if OSAL_ST_RESOLUTION != 16
 #error "CH32H417 ST freerunning requires CH_CFG_ST_RESOLUTION 16 (16-bit timers)"
+#endif
+
+#if !defined(CH32H417_TIMCLK1)
+#define CH32H417_TIMCLK1 ch32h417_timclk1
 #endif
 
 #if (CH32H417_TIMCLK1 % OSAL_ST_FREQUENCY) != 0
@@ -132,6 +138,10 @@
 #if OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC
 
 #define ST_HANDLER                       SysTick1_Handler
+
+#if !defined(CH32H417_HCLK)
+#define CH32H417_HCLK                   ch32h417_hclk
+#endif
 
 #if (CH32H417_HCLK % OSAL_ST_FREQUENCY) != 0
 #error "the selected ST frequency is not obtainable because integer rounding"
