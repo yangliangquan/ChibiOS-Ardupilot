@@ -20,6 +20,9 @@ PLATFORMINC := $(CHIBIOS)/os/hal/ports/WCH/CH32H417 \
                $(CHIBIOS)/os/common/ext/WCH/CH32H417 \
                $(CHIBIOS)/os/common/startup/RISCV-ECLIC/devices/CH32H417
 
+# Shared DMA helper, required by the DMA capable drivers.
+include $(CHIBIOS)/os/hal/ports/WCH/LLD/DMAv1/driver.mk
+
 # Drivers compatible with the platform.
 include $(CHIBIOS)/os/hal/ports/WCH/LLD/GPIOv1/driver.mk
 include $(CHIBIOS)/os/hal/ports/WCH/LLD/USARTv1/driver.mk
