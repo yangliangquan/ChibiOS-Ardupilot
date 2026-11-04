@@ -161,6 +161,48 @@ typedef uint32_t iopadid_t;
 #define pal_lld_setgroupmode(port, mask, offset, mode)                      \
   _pal_lld_setgroupmode(port, mask << offset, mode)
 
+#define pal_lld_readport(port)                                              \
+  _pal_lld_readport(port)
+
+#define pal_lld_readlatch(port)                                             \
+  _pal_lld_readlatch(port)
+
+#define pal_lld_writeport(port, bits)                                       \
+  _pal_lld_writeport(port, bits)
+
+#define pal_lld_setport(port, bits)                                         \
+  _pal_lld_setport(port, bits)
+
+#define pal_lld_clearport(port, bits)                                       \
+  _pal_lld_clearport(port, bits)
+
+#define pal_lld_toggleport(port, bits)                                      \
+  _pal_lld_toggleport(port, bits)
+
+#define pal_lld_readgroup(port, mask, offset)                               \
+  _pal_lld_readgroup(port, mask, offset)
+
+#define pal_lld_writegroup(port, mask, offset, bits)                        \
+  _pal_lld_writegroup(port, mask, offset, bits)
+
+#define pal_lld_readpad(port, pad)                                          \
+  _pal_lld_readpad(port, pad)
+
+#define pal_lld_writepad(port, pad, bit)                                    \
+  _pal_lld_writepad(port, pad, bit)
+
+#define pal_lld_setpad(port, pad)                                           \
+  _pal_lld_setpad(port, pad)
+
+#define pal_lld_clearpad(port, pad)                                         \
+  _pal_lld_clearpad(port, pad)
+
+#define pal_lld_togglepad(port, pad)                                        \
+  _pal_lld_togglepad(port, pad)
+
+#define pal_lld_setpadmode(port, pad, mode)                                 \
+  _pal_lld_setpadmode(port, pad, mode)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -168,25 +210,25 @@ extern "C" {
   void _pal_lld_setgroupmode(ioportid_t port,
                              ioportmask_t mask,
                              iomode_t mode);
-  uint32_t pal_lld_readport(ioportid_t port);
-  uint32_t pal_lld_readlatch(ioportid_t port);
-  void pal_lld_writeport(ioportid_t port, ioportmask_t bits);
-  void pal_lld_setport(ioportid_t port, ioportmask_t bits);
-  void pal_lld_clearport(ioportid_t port, ioportmask_t bits);
-  void pal_lld_toggleport(ioportid_t port, ioportmask_t bits);
-  uint32_t pal_lld_readgroup(ioportid_t port,
-                             ioportmask_t mask,
-                             unsigned offset);
-  void pal_lld_writegroup(ioportid_t port,
-                          ioportmask_t mask,
-                          unsigned offset,
-                          ioportmask_t bits);
-  ioportmask_t pal_lld_readpad(ioportid_t port, iopadid_t pad);
-  void pal_lld_writepad(ioportid_t port, iopadid_t pad, ioportmask_t bit);
-  void pal_lld_setpad(ioportid_t port, iopadid_t pad);
-  void pal_lld_clearpad(ioportid_t port, iopadid_t pad);
-  void pal_lld_togglepad(ioportid_t port, iopadid_t pad);
-  void pal_lld_setpadmode(ioportid_t port, iopadid_t pad, iomode_t mode);
+  uint32_t _pal_lld_readport(ioportid_t port);
+  uint32_t _pal_lld_readlatch(ioportid_t port);
+  void _pal_lld_writeport(ioportid_t port, ioportmask_t bits);
+  void _pal_lld_setport(ioportid_t port, ioportmask_t bits);
+  void _pal_lld_clearport(ioportid_t port, ioportmask_t bits);
+  void _pal_lld_toggleport(ioportid_t port, ioportmask_t bits);
+  uint32_t _pal_lld_readgroup(ioportid_t port,
+                              ioportmask_t mask,
+                              unsigned offset);
+  void _pal_lld_writegroup(ioportid_t port,
+                           ioportmask_t mask,
+                           unsigned offset,
+                           ioportmask_t bits);
+  ioportmask_t _pal_lld_readpad(ioportid_t port, iopadid_t pad);
+  void _pal_lld_writepad(ioportid_t port, iopadid_t pad, ioportmask_t bit);
+  void _pal_lld_setpad(ioportid_t port, iopadid_t pad);
+  void _pal_lld_clearpad(ioportid_t port, iopadid_t pad);
+  void _pal_lld_togglepad(ioportid_t port, iopadid_t pad);
+  void _pal_lld_setpadmode(ioportid_t port, iopadid_t pad, iomode_t mode);
 #ifdef __cplusplus
 }
 #endif

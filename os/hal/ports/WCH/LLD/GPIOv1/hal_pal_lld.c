@@ -119,7 +119,7 @@ void _pal_lld_init(void) {
  *
  * @notapi
  */
-uint32_t pal_lld_readport(ioportid_t port) {
+uint32_t _pal_lld_readport(ioportid_t port) {
 
   return ((GPIO_TypeDef *)port)->INDR;
 }
@@ -132,7 +132,7 @@ uint32_t pal_lld_readport(ioportid_t port) {
  *
  * @notapi
  */
-uint32_t pal_lld_readlatch(ioportid_t port) {
+uint32_t _pal_lld_readlatch(ioportid_t port) {
 
   return ((GPIO_TypeDef *)port)->OUTDR;
 }
@@ -145,7 +145,7 @@ uint32_t pal_lld_readlatch(ioportid_t port) {
  *
  * @notapi
  */
-void pal_lld_writeport(ioportid_t port, ioportmask_t bits) {
+void _pal_lld_writeport(ioportid_t port, ioportmask_t bits) {
 
   ((GPIO_TypeDef *)port)->OUTDR = bits;
 }
@@ -158,7 +158,7 @@ void pal_lld_writeport(ioportid_t port, ioportmask_t bits) {
  *
  * @notapi
  */
-void pal_lld_setport(ioportid_t port, ioportmask_t bits) {
+void _pal_lld_setport(ioportid_t port, ioportmask_t bits) {
 
   ((GPIO_TypeDef *)port)->BSHR = bits;
 }
@@ -171,7 +171,7 @@ void pal_lld_setport(ioportid_t port, ioportmask_t bits) {
  *
  * @notapi
  */
-void pal_lld_clearport(ioportid_t port, ioportmask_t bits) {
+void _pal_lld_clearport(ioportid_t port, ioportmask_t bits) {
 
   ((GPIO_TypeDef *)port)->BCR = bits;
 }
@@ -184,7 +184,7 @@ void pal_lld_clearport(ioportid_t port, ioportmask_t bits) {
  *
  * @notapi
  */
-void pal_lld_toggleport(ioportid_t port, ioportmask_t bits) {
+void _pal_lld_toggleport(ioportid_t port, ioportmask_t bits) {
   GPIO_TypeDef *gp = (GPIO_TypeDef *)port;
 
   gp->OUTDR = gp->OUTDR ^ bits;
@@ -200,7 +200,7 @@ void pal_lld_toggleport(ioportid_t port, ioportmask_t bits) {
  *
  * @notapi
  */
-uint32_t pal_lld_readgroup(ioportid_t port,
+uint32_t _pal_lld_readgroup(ioportid_t port,
                            ioportmask_t mask,
                            unsigned offset) {
 
@@ -217,7 +217,7 @@ uint32_t pal_lld_readgroup(ioportid_t port,
  *
  * @notapi
  */
-void pal_lld_writegroup(ioportid_t port,
+void _pal_lld_writegroup(ioportid_t port,
                         ioportmask_t mask,
                         unsigned offset,
                         ioportmask_t bits) {
@@ -236,7 +236,7 @@ void pal_lld_writegroup(ioportid_t port,
  *
  * @notapi
  */
-ioportmask_t pal_lld_readpad(ioportid_t port, iopadid_t pad) {
+ioportmask_t _pal_lld_readpad(ioportid_t port, iopadid_t pad) {
 
   return (((GPIO_TypeDef *)port)->INDR >> pad) & 1U;
 }
@@ -250,7 +250,7 @@ ioportmask_t pal_lld_readpad(ioportid_t port, iopadid_t pad) {
  *
  * @notapi
  */
-void pal_lld_writepad(ioportid_t port, iopadid_t pad, ioportmask_t bit) {
+void _pal_lld_writepad(ioportid_t port, iopadid_t pad, ioportmask_t bit) {
   GPIO_TypeDef *gp = (GPIO_TypeDef *)port;
 
   if (bit != 0U) {
@@ -269,7 +269,7 @@ void pal_lld_writepad(ioportid_t port, iopadid_t pad, ioportmask_t bit) {
  *
  * @notapi
  */
-void pal_lld_setpad(ioportid_t port, iopadid_t pad) {
+void _pal_lld_setpad(ioportid_t port, iopadid_t pad) {
 
   ((GPIO_TypeDef *)port)->BSHR = 1UL << pad;
 }
@@ -282,7 +282,7 @@ void pal_lld_setpad(ioportid_t port, iopadid_t pad) {
  *
  * @notapi
  */
-void pal_lld_clearpad(ioportid_t port, iopadid_t pad) {
+void _pal_lld_clearpad(ioportid_t port, iopadid_t pad) {
 
   ((GPIO_TypeDef *)port)->BCR = 1UL << pad;
 }
@@ -295,7 +295,7 @@ void pal_lld_clearpad(ioportid_t port, iopadid_t pad) {
  *
  * @notapi
  */
-void pal_lld_togglepad(ioportid_t port, iopadid_t pad) {
+void _pal_lld_togglepad(ioportid_t port, iopadid_t pad) {
   GPIO_TypeDef *gp = (GPIO_TypeDef *)port;
 
   gp->OUTDR = gp->OUTDR ^ (1UL << pad);
@@ -310,7 +310,7 @@ void pal_lld_togglepad(ioportid_t port, iopadid_t pad) {
  *
  * @notapi
  */
-void pal_lld_setpadmode(ioportid_t port, iopadid_t pad, iomode_t mode) {
+void _pal_lld_setpadmode(ioportid_t port, iopadid_t pad, iomode_t mode) {
 
   set_pad_mode(port, pad, mode);
 }
