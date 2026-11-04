@@ -30,6 +30,8 @@
 
 #if (HAL_USE_ADC == TRUE) || defined(__DOXYGEN__)
 
+#include "hal_lld.h"
+
 /*===========================================================================*/
 /* Driver constants.                                                         */
 /*===========================================================================*/
@@ -63,17 +65,77 @@
 
 /**
  * @brief   ADC clock tree pre-divider (HCLK bus divider).
- * @note    ADCCLK = HCLK / PPRE2 / ADCPRE, pending on-board validation.
+ * @note    ADCCLK = HCLK / PPRE2 / ADCPRE. The value is the PPRE2[2:0]
+ *          field of RCC_CFGR0: 0x00 = /1 (RCC_PPRE2_DIV0), 0x04 = /2,
+ *          0x05 = /4, 0x06 = /8, 0x07 = /16.
  */
 #if !defined(CH32H417_ADC_PPRE2_DIV) || defined(__DOXYGEN__)
-#define CH32H417_ADC_PPRE2_DIV                 RCC_PPRE2_DIV0
+#define CH32H417_ADC_PPRE2_DIV                 0x00U
 #endif
 
 /**
  * @brief   ADC clock tree post-divider.
+ * @note    The value is the ADCPRE[1:0] field of RCC_CFGR0: 0x00 = /2
+ *          (RCC_HCLK_ADCPRE_DIV2), 0x01 = /4, 0x02 = /6, 0x03 = /8.
  */
 #if !defined(CH32H417_ADC_PRESCALER) || defined(__DOXYGEN__)
-#define CH32H417_ADC_PRESCALER                 RCC_HCLK_ADCPRE_DIV8
+#define CH32H417_ADC_PRESCALER                 0x03U
+#endif
+
+/* Divider values of the two ADC prescalers. */
+#if   CH32H417_ADC_PPRE2_DIV == 0x00U
+#define CH32H417_ADC_PPRE2_VALUE              1U
+#elif CH32H417_ADC_PPRE2_DIV == 0x04U
+#define CH32H417_ADC_PPRE2_VALUE              2U
+#elif CH32H417_ADC_PPRE2_DIV == 0x05U
+#define CH32H417_ADC_PPRE2_VALUE              4U
+#elif CH32H417_ADC_PPRE2_DIV == 0x06U
+#define CH32H417_ADC_PPRE2_VALUE              8U
+#elif CH32H417_ADC_PPRE2_DIV == 0x07U
+#define CH32H417_ADC_PPRE2_VALUE              16U
+#else
+#error "invalid CH32H417_ADC_PPRE2_DIV value"
+#endif
+
+#if   CH32H417_ADC_PRESCALER == 0x00U
+#define CH32H417_ADC_PRESCALER_VALUE          2U
+#elif CH32H417_ADC_PRESCALER == 0x01U
+#define CH32H417_ADC_PRESCALER_VALUE          4U
+#elif CH32H417_ADC_PRESCALER == 0x02U
+#define CH32H417_ADC_PRESCALER_VALUE          6U
+#elif CH32H417_ADC_PRESCALER == 0x03U
+#define CH32H417_ADC_PRESCALER_VALUE          8U
+#else
+#error "invalid CH32H417_ADC_PRESCALER value"
+#endif
+
+/**
+ * @brief   ADC clock frequency in Hz.
+ * @note    The ADC clock cannot exceed 80MHz (RM 3.3.5). Derived from
+ *          the live HCLK and the configured prescalers.
+ */
+#if !defined(CH32H417_ADCCLK) || defined(__DOXYGEN__)
+#define CH32H417_ADCCLK                     (ch32h417_hclk /                    \
+                                             CH32H417_ADC_PPRE2_VALUE /          \
+                                             CH32H417_ADC_PRESCALER_VALUE)
+#endif
+
+/**
+ * @brief   Per-unit IRQ and DMA channel IRQ priorities.
+ * @note    DMA channels are allocated dynamically at driver start, the
+ *          DMAMUX routing allows any channel to be connected to any request.
+ * @note    The two units share the ADC1_2 IRQ vector, a single priority is
+ *          therefore used for both.
+ * @{
+ */
+#if !defined(CH32H417_ADC_ADC1_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_ADC_ADC1_DMA_PRIORITY        8
+#endif
+#if !defined(CH32H417_ADC_ADC2_DMA_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_ADC_ADC2_DMA_PRIORITY        8
+#endif
+#if !defined(CH32H417_ADC_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_ADC_IRQ_PRIORITY             8
 #endif
 /** @} */
 
@@ -83,6 +145,24 @@
 
 #if !CH32H417_ADC_USE_ADC1 && !CH32H417_ADC_USE_ADC2
 #error "ADC driver activated but no ADC unit assigned"
+#endif
+
+/* The driver always moves the samples through DMA.*/
+#if !defined(CH32_DMA_REQUIRED)
+#define CH32_DMA_REQUIRED
+#endif
+
+#if CH32H417_ADC_USE_ADC1 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_ADC_ADC1_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to ADC1"
+#endif
+#if CH32H417_ADC_USE_ADC2 &&                                                 \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_ADC_ADC2_DMA_PRIORITY)
+#error "Invalid DMA priority assigned to ADC2"
+#endif
+#if (CH32H417_ADC_USE_ADC1 || CH32H417_ADC_USE_ADC2) &&                     \
+    !CH32_DMA_IS_VALID_PRIORITY(CH32H417_ADC_IRQ_PRIORITY)
+#error "Invalid IRQ priority assigned to the ADC vector"
 #endif
 
 /*===========================================================================*/
@@ -114,8 +194,8 @@ typedef uint32_t adcerror_t;
 #define adc_lld_driver_fields                                               \
   /* Pointer to the ADC registers block.*/                                  \
   ADC_TypeDef               *adc;                                           \
-  /* Current sample index in the destination buffer.*/                      \
-  size_t                    idx;
+  /* Associated DMA channel.*/                                              \
+  const ch32_dma_stream_t   *dmastp;
 
 /**
  * @brief   Low level fields of the ADC configuration structure.
