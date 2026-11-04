@@ -154,22 +154,32 @@ _crt0_entry:
     li      t0, 0x1237B3E0
     csrw    CSR_CORECFGR, t0
 
-    /* inestcr: allow up to eight nesting levels (0xBC1). */
-    li      t0, 0x07
+    /*
+     * inestcr (0xBC1): maximum nesting level. Must match
+     * PORT_RISCV_NESTING_LEVELS, which chcore.h uses to size the per-thread
+     * interrupt stack reserve.
+     */
+    li      t0, (PORT_RISCV_NESTING_LEVELS - 1)
     csrw    CSR_INESTCR, t0
 
     /*
-     * intsyscr (0x804): HWSTKEN=0 (software stacking, see port design),
-     * INESTEN=1, PMTCFG=11 (three preemption priority bits).
+     * intsyscr (0x804): HWSTKEN=0 (software stacking, the RTOS needs
+     * per-thread stacks), INESTEN=1, PMTCFG=PORT_RISCV_PREEMPT_BITS.
      */
-    li      t0, 0x0E
+    li      t0, ((PORT_RISCV_PREEMPT_BITS << 2) | (1 << 1))
     csrw    CSR_INTSYSCR, t0
 
     /*
-     * mstatus: FS=dirty, MPP=machine (every mret stays in M-mode),
-     * MPIE=0, MIE=0.
+     * mstatus: MPP=machine (every mret stays in M-mode), MPIE=0, MIE=0.
+     * FS=Initial (01) when the F extension is built in, so the FPU is
+     * usable and the port can save/restore the FP register file. FS is
+     * left OFF otherwise.
      */
-    li      t0, 0x7800
+#if PORT_RISCV_USE_FPU
+    li      t0, 0x3800
+#else
+    li      t0, 0x1800
+#endif
     csrw    CSR_MSTATUS, t0
 
     /*

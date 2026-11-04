@@ -212,34 +212,37 @@ vector_base:
 
 /* Reserved vector slots: safe halt. */
 _vec_default:
+    csrc    CSR_MSTATUS, MSTATUS_MIE
 1:
     j       1b
 
-/* Core exceptions and system interrupts. */
+/* Core exceptions and system interrupts.
+   Exceptions and the software interrupt never allow nesting; the external
+   and core timer interrupts do. */
 .align  2
 .globl _vec_NMI_Handler
 _vec_NMI_Handler:
-    PORT_IRQ_STUB NMI_Handler
+    PORT_IRQ_STUB_NONEST NMI_Handler
 
 .align  2
 .globl _vec_HardFault_Handler
 _vec_HardFault_Handler:
-    PORT_IRQ_STUB HardFault_Handler
+    PORT_IRQ_STUB_NONEST HardFault_Handler
 
 .align  2
 .globl _vec_Ecall_M_Mode_Handler
 _vec_Ecall_M_Mode_Handler:
-    PORT_IRQ_STUB Ecall_M_Mode_Handler
+    PORT_IRQ_STUB_NONEST Ecall_M_Mode_Handler
 
 .align  2
 .globl _vec_Ecall_U_Mode_Handler
 _vec_Ecall_U_Mode_Handler:
-    PORT_IRQ_STUB Ecall_U_Mode_Handler
+    PORT_IRQ_STUB_NONEST Ecall_U_Mode_Handler
 
 .align  2
 .globl _vec_Break_Point_Handler
 _vec_Break_Point_Handler:
-    PORT_IRQ_STUB Break_Point_Handler
+    PORT_IRQ_STUB_NONEST Break_Point_Handler
 
 .align  2
 .globl _vec_SysTick0_Handler
@@ -254,7 +257,7 @@ _vec_SysTick1_Handler:
 .align  2
 .globl _vec_SW_Handler
 _vec_SW_Handler:
-    PORT_IRQ_STUB SW_Handler
+    PORT_IRQ_STUB_NONEST SW_Handler
 
 .align  2
 .globl _vec_IPC_CH0_Handler

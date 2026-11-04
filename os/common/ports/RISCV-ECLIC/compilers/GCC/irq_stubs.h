@@ -22,15 +22,23 @@
  * @brief   Shared assembler macros for the CH32H417 interrupt entry/exit
  *          protocol (software stacking, QingKe V5F).
  *
- * @details Frame layout must match struct port_extctx in chcore.h:
- *          0 ra, 1 tp, 2 t0, 3 t1, 4 t2, 5..10 a0..a5,
- *          11 mepc, 12 mcause, 13 mstatus, 14..19 a6,a7,t3..t6.
+ * @details Frame layout must match struct port_extctx in chcore.h.
  *
- *          The interrupt entry is a jump (no hardware return address):
- *          the stub saves the caller-saved context on the interrupted
- *          stack, invokes the weak handler symbol with the standard
- *          ChibiOS bool-returning protocol, then either returns or
- *          performs an ISR context switch via _port_switch_from_isr.
+ *          Interrupt entry:
+ *          - the very first instruction clears MIE and executes fence.i.
+ *            This closes the hardware-nesting window before mepc/mcause/
+ *            mstatus are read. An already-pending higher-priority IRQ cannot
+ *            be the cause of a nest here: the PFIC arbiter would have
+ *            selected it at the boundary where the current IRQ was taken.
+ *          - the full interrupted context is then saved on the current
+ *            thread stack (software stacking, per-thread stacks);
+ *          - external IRQs re-enable MIE to allow priority nesting, the
+ *            non-nesting variant (exceptions and SW) keeps it cleared.
+ *
+ *          Interrupt exit is centralised in _port_exit_from_isr (chcoreasm.S):
+ *          MIE is cleared again, fence.i is executed, the frame is restored
+ *          with mstatus.MIE=0 and finally mret re-enables interrupts from
+ *          mstatus.MPIE. MIE is never restored early.
  *
  * @addtogroup RISCV_ECLIC_GCC_CORE
  * @{
@@ -39,12 +47,13 @@
 #ifndef _IRQ_STUBS_H_
 #define _IRQ_STUBS_H_
 
-/* Frame size: 20 words. */
-#define EXTCTX_SIZE     (20*REGBYTES)
+/* Frame size in bytes, shared with chcore.h. */
+#define EXTCTX_SIZE     PORT_RISCV_EXTCTX_SIZE
 
 /*
- * Saves the interrupted context (caller-saved regs + CSRs) at sp.
- * Only t0 used as temporary, stored before use.
+ * Saves the interrupted context (caller-saved GPRs + CSRs, plus the
+ * caller-saved FP registers when the F extension is enabled) at sp.
+ * Only t0 is used as a temporary, and it is saved before first use.
  */
 .macro PORT_SAVE_CONTEXT
     addi    sp, sp, -EXTCTX_SIZE
@@ -71,9 +80,39 @@
     STORE   t0, (12*REGBYTES)(sp)
     csrr    t0, CSR_MSTATUS
     STORE   t0, (13*REGBYTES)(sp)
+#if PORT_RISCV_USE_FPU
+    FSTORE  ft0,  (20*FREGBYTES)(sp)
+    FSTORE  ft1,  (21*FREGBYTES)(sp)
+    FSTORE  ft2,  (22*FREGBYTES)(sp)
+    FSTORE  ft3,  (23*FREGBYTES)(sp)
+    FSTORE  ft4,  (24*FREGBYTES)(sp)
+    FSTORE  ft5,  (25*FREGBYTES)(sp)
+    FSTORE  ft6,  (26*FREGBYTES)(sp)
+    FSTORE  ft7,  (27*FREGBYTES)(sp)
+    FSTORE  ft8,  (28*FREGBYTES)(sp)
+    FSTORE  ft9,  (29*FREGBYTES)(sp)
+    FSTORE  ft10, (30*FREGBYTES)(sp)
+    FSTORE  ft11, (31*FREGBYTES)(sp)
+    FSTORE  fa0,  (32*FREGBYTES)(sp)
+    FSTORE  fa1,  (33*FREGBYTES)(sp)
+    FSTORE  fa2,  (34*FREGBYTES)(sp)
+    FSTORE  fa3,  (35*FREGBYTES)(sp)
+    FSTORE  fa4,  (36*FREGBYTES)(sp)
+    FSTORE  fa5,  (37*FREGBYTES)(sp)
+    FSTORE  fa6,  (38*FREGBYTES)(sp)
+    FSTORE  fa7,  (39*FREGBYTES)(sp)
+    csrr    t0, CSR_FCSR
+    STORE   t0, (40*REGBYTES)(sp)
+#endif
 .endm
 
-/* Restores the context saved by PORT_SAVE_CONTEXT from sp. */
+/*
+ * Restores the context saved by PORT_SAVE_CONTEXT from sp.
+ *
+ * mstatus is written first so that FS is valid before the FP loads; the saved
+ * value has MIE=0 (it was captured after the entry clear), so interrupts stay
+ * disabled until mret restores MIE from MPIE.
+ */
 .macro PORT_RESTORE_CONTEXT
     LOAD    t0, (11*REGBYTES)(sp)
     csrw    CSR_MEPC, t0
@@ -81,6 +120,30 @@
     csrw    CSR_MCAUSE, t0
     LOAD    t0, (13*REGBYTES)(sp)
     csrw    CSR_MSTATUS, t0
+#if PORT_RISCV_USE_FPU
+    LOAD    t0, (40*REGBYTES)(sp)
+    csrw    CSR_FCSR, t0
+    FLOAD   ft0,  (20*FREGBYTES)(sp)
+    FLOAD   ft1,  (21*FREGBYTES)(sp)
+    FLOAD   ft2,  (22*FREGBYTES)(sp)
+    FLOAD   ft3,  (23*FREGBYTES)(sp)
+    FLOAD   ft4,  (24*FREGBYTES)(sp)
+    FLOAD   ft5,  (25*FREGBYTES)(sp)
+    FLOAD   ft6,  (26*FREGBYTES)(sp)
+    FLOAD   ft7,  (27*FREGBYTES)(sp)
+    FLOAD   ft8,  (28*FREGBYTES)(sp)
+    FLOAD   ft9,  (29*FREGBYTES)(sp)
+    FLOAD   ft10, (30*FREGBYTES)(sp)
+    FLOAD   ft11, (31*FREGBYTES)(sp)
+    FLOAD   fa0,  (32*FREGBYTES)(sp)
+    FLOAD   fa1,  (33*FREGBYTES)(sp)
+    FLOAD   fa2,  (34*FREGBYTES)(sp)
+    FLOAD   fa3,  (35*FREGBYTES)(sp)
+    FLOAD   fa4,  (36*FREGBYTES)(sp)
+    FLOAD   fa5,  (37*FREGBYTES)(sp)
+    FLOAD   fa6,  (38*FREGBYTES)(sp)
+    FLOAD   fa7,  (39*FREGBYTES)(sp)
+#endif
     LOAD    ra, (0*REGBYTES)(sp)
     LOAD    tp, (1*REGBYTES)(sp)
     LOAD    t0, (2*REGBYTES)(sp)
@@ -102,25 +165,28 @@
 .endm
 
 /*
- * Common interrupt stub: saves the context, calls the handler symbol
- * passed as argument and applies the ChibiOS ISR exit protocol.
- * a0 = bool returned by the handler (preemption required).
+ * Common external interrupt stub: saves the context, re-enables nesting and
+ * calls the handler. The handler is a normal C function returning void; the
+ * exit path is shared with the non-nesting stub.
  */
 .macro PORT_IRQ_STUB handler
+    csrc    CSR_MSTATUS, MSTATUS_MIE
+    fence.i
     PORT_SAVE_CONTEXT
-    csrc    CSR_MSTATUS, MSTATUS_MIE
+    csrs    CSR_MSTATUS, MSTATUS_MIE
     call    \handler
+    j       _port_exit_from_isr
+.endm
+
+/*
+ * Non-nesting stub for exceptions and the software interrupt: MIE stays
+ * cleared for the whole handler.
+ */
+.macro PORT_IRQ_STUB_NONEST handler
     csrc    CSR_MSTATUS, MSTATUS_MIE
-    beq     a0, zero, 990f
-    /* Preemption required: chain into the switch routine. mret must
-       land with MIE=0 (clear MPIE so mret restores MIE=0). MPIE is
-       bit 7, outside the CSRxxI 5-bit immediate range: use a register. */
-    li      t0, MSTATUS_MPIE
-    csrc    CSR_MSTATUS, t0
-    la      a0, _port_switch_from_isr
-    csrw    CSR_MEPC, a0
-    mret
-990:
+    fence.i
+    PORT_SAVE_CONTEXT
+    call    \handler
     j       _port_exit_from_isr
 .endm
 

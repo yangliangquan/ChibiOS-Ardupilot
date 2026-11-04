@@ -66,33 +66,6 @@
 .endm
 
 /* --------------------------------------------------------------------------
- * Trap entry point (_start_trap), exceptions are routed here.
- * -------------------------------------------------------------------------- */
-.section .trap, "ax"
-.option push
-.option norelax
-.align 4
-.globl _start_trap
-_start_trap:
-    /* Save the caller saving registers (context). */
-    PORT_SAVE_CONTEXT
-
-    /* Set the function arguments: mcause, frame, mtval. */
-    csrr a0, CSR_MCAUSE
-    mv a1, sp
-    csrr a2, CSR_MTVAL
-
-    /* Call the function. */
-    call handle_trap
-
-    /* Restore the caller saving registers (context). */
-    PORT_RESTORE_CONTEXT
-
-    /* Return to regular code. */
-    mret
-.option pop
-
-/* --------------------------------------------------------------------------
  * Start a thread by invoking its work function.
  *
  * Threads execution starts here, the code leaves the system critical zone
@@ -100,6 +73,10 @@ _start_trap:
  * register S1 contains the thread parameter. The function chThdExit() is
  * called on thread function return.
  * -------------------------------------------------------------------------- */
+.section .text
+.option push
+.option norelax
+.align 4
 .globl  _port_thread_start
 _port_thread_start:
 #if CH_DBG_SYSTEM_STATE_CHECK
@@ -108,6 +85,10 @@ _port_thread_start:
 #if CH_DBG_STATISTICS
     jal     ra, _stats_stop_measure_crit_thd
 #endif
+#if PORT_RISCV_USE_FPU
+    /* New threads start with the default FP control/status settings. */
+    csrw    CSR_FCSR, zero
+#endif
     ENABLE_MIE
     mv      a0, s1
     jalr    ra, s0
@@ -115,11 +96,14 @@ _port_thread_start:
     jal     ra, chThdExit
 
 _zombies:
-       j       _zombies
+    j       _zombies
 
 /* --------------------------------------------------------------------------
  * Performs a context switch between two threads.
  * a0 = ntp, a1 = otp
+ *
+ * The frame layout must match struct port_intctx in chcore.h. The frame is
+ * 16-byte aligned in both the integer-only and the FP variants.
  * -------------------------------------------------------------------------- */
 .option push
 .option norelax
@@ -127,109 +111,105 @@ _zombies:
 .globl  _port_switch
 .type _port_switch,@function
 _port_switch:
-    # OLD THREAD CONTEXT SAVE BEGIN
-    # Allocate space for port_intctx structure on the threading stack.
-    # The stackpointer is 16 byte aligned to be compliant with risc-v abi.
-#if !defined(__riscv_32e)
-    addi sp, sp, -16*REGBYTES
-#else
-    addi sp, sp, -4*REGBYTES
+    /* OLD THREAD CONTEXT SAVE BEGIN */
+    addi sp, sp, -PORT_RISCV_INTCTX_SIZE
+
+    STORE   ra,  (0*REGBYTES)(sp)
+    STORE   s0,  (1*REGBYTES)(sp)
+    STORE   s1,  (2*REGBYTES)(sp)
+    STORE   s2,  (3*REGBYTES)(sp)
+    STORE   s3,  (4*REGBYTES)(sp)
+    STORE   s4,  (5*REGBYTES)(sp)
+    STORE   s5,  (6*REGBYTES)(sp)
+    STORE   s6,  (7*REGBYTES)(sp)
+    STORE   s7,  (8*REGBYTES)(sp)
+    STORE   s8,  (9*REGBYTES)(sp)
+    STORE   s9,  (10*REGBYTES)(sp)
+    STORE   s10, (11*REGBYTES)(sp)
+    STORE   s11, (12*REGBYTES)(sp)
+#if PORT_RISCV_USE_FPU
+    FSTORE  fs0,  (16*FREGBYTES)(sp)
+    FSTORE  fs1,  (17*FREGBYTES)(sp)
+    FSTORE  fs2,  (18*FREGBYTES)(sp)
+    FSTORE  fs3,  (19*FREGBYTES)(sp)
+    FSTORE  fs4,  (20*FREGBYTES)(sp)
+    FSTORE  fs5,  (21*FREGBYTES)(sp)
+    FSTORE  fs6,  (22*FREGBYTES)(sp)
+    FSTORE  fs7,  (23*FREGBYTES)(sp)
+    FSTORE  fs8,  (24*FREGBYTES)(sp)
+    FSTORE  fs9,  (25*FREGBYTES)(sp)
+    FSTORE  fs10, (26*FREGBYTES)(sp)
+    FSTORE  fs11, (27*FREGBYTES)(sp)
+    csrr    t0, CSR_FCSR
+    STORE   t0, (28*REGBYTES)(sp)
 #endif
 
-    # Store callee save registers
-    STORE      ra,  0*REGBYTES(sp)
-    STORE      s0,  1*REGBYTES(sp)
-    STORE      s1,  2*REGBYTES(sp)
-#if !defined(__riscv_32e)
-    STORE      s2,  3*REGBYTES(sp)
-    STORE      s3,  4*REGBYTES(sp)
-    STORE      s4,  5*REGBYTES(sp)
-    STORE      s5,  6*REGBYTES(sp)
-    STORE      s6,  7*REGBYTES(sp)
-    STORE      s7,  8*REGBYTES(sp)
-    STORE      s8,  9*REGBYTES(sp)
-    STORE      s9,  10*REGBYTES(sp)
-    STORE      s10, 11*REGBYTES(sp)
-    STORE      s11, 12*REGBYTES(sp)
+    /* Order all memory operations of the outgoing thread before the switch on
+       the out-of-order V5F. */
+    fence   iorw, iorw
+
+    /* Store stack pointer in otp->ctx. */
+    STORE   sp, CONTEXT_OFFSET(a1)
+    /* OLD THREAD CONTEXT SAVE END */
+
+    /* NEW THREAD CONTEXT RESTORE BEGIN */
+    LOAD    sp, CONTEXT_OFFSET(a0)
+
+    LOAD    ra,  (0*REGBYTES)(sp)
+    LOAD    s0,  (1*REGBYTES)(sp)
+    LOAD    s1,  (2*REGBYTES)(sp)
+    LOAD    s2,  (3*REGBYTES)(sp)
+    LOAD    s3,  (4*REGBYTES)(sp)
+    LOAD    s4,  (5*REGBYTES)(sp)
+    LOAD    s5,  (6*REGBYTES)(sp)
+    LOAD    s6,  (7*REGBYTES)(sp)
+    LOAD    s7,  (8*REGBYTES)(sp)
+    LOAD    s8,  (9*REGBYTES)(sp)
+    LOAD    s9,  (10*REGBYTES)(sp)
+    LOAD    s10, (11*REGBYTES)(sp)
+    LOAD    s11, (12*REGBYTES)(sp)
+#if PORT_RISCV_USE_FPU
+    LOAD    t0, (28*REGBYTES)(sp)
+    csrw    CSR_FCSR, t0
+    FLOAD   fs0,  (16*FREGBYTES)(sp)
+    FLOAD   fs1,  (17*FREGBYTES)(sp)
+    FLOAD   fs2,  (18*FREGBYTES)(sp)
+    FLOAD   fs3,  (19*FREGBYTES)(sp)
+    FLOAD   fs4,  (20*FREGBYTES)(sp)
+    FLOAD   fs5,  (21*FREGBYTES)(sp)
+    FLOAD   fs6,  (22*FREGBYTES)(sp)
+    FLOAD   fs7,  (23*FREGBYTES)(sp)
+    FLOAD   fs8,  (24*FREGBYTES)(sp)
+    FLOAD   fs9,  (25*FREGBYTES)(sp)
+    FLOAD   fs10, (26*FREGBYTES)(sp)
+    FLOAD   fs11, (27*FREGBYTES)(sp)
 #endif
 
-    # Store stackpointer in otp->ctx
-    STORE      sp, CONTEXT_OFFSET(a1)
-    # OLD THREAD CONTEXT SAVE END
+    addi    sp, sp, PORT_RISCV_INTCTX_SIZE
+    /* NEW THREAD CONTEXT RESTORE END */
 
-    # NEW THREAD CONTEXT RESTORE BEGIN
-    # Load stackpointer from ntp->ctx
-    LOAD       sp, CONTEXT_OFFSET(a0)
-
-    LOAD      ra,  0*REGBYTES(sp)
-    LOAD      s0,  1*REGBYTES(sp)
-    LOAD      s1,  2*REGBYTES(sp)
-#if !defined(__riscv_32e)
-    LOAD      s2,  3*REGBYTES(sp)
-    LOAD      s3,  4*REGBYTES(sp)
-    LOAD      s4,  5*REGBYTES(sp)
-    LOAD      s5,  6*REGBYTES(sp)
-    LOAD      s6,  7*REGBYTES(sp)
-    LOAD      s7,  8*REGBYTES(sp)
-    LOAD      s8,  9*REGBYTES(sp)
-    LOAD      s9,  10*REGBYTES(sp)
-    LOAD      s10, 11*REGBYTES(sp)
-    LOAD      s11, 12*REGBYTES(sp)
-#endif
-
-    # De-allocate space on the threading stack
-#if !defined(__riscv_32e)
-    addi sp, sp, 16*REGBYTES
-#else
-    addi sp, sp, 4*REGBYTES
-#endif
-    # NEW THREAD CONTEXT RESTORE END
-
-    # Jump to return address loaded into ra
     ret
 .option pop
 
 /* --------------------------------------------------------------------------
- * Post-IRQ switch code.
+ * ISR exit path.
  *
- * Reached via mret from an interrupt stub when preemption is required.
- * mstatus.MIE is 0 at this point (MPIE cleared by the stub).
+ * All vector stubs tail-jump here after the C handler returned. Interrupts
+ * are disabled before the restore and stay disabled until mret re-enables
+ * them from the saved mstatus.MPIE. The saved mstatus itself has MIE=0, so
+ * a nested trap can never observe a half-restored frame.
  * -------------------------------------------------------------------------- */
 .section .text
 .option push
 .option norelax
 .align 4
-.globl _port_switch_from_isr
-_port_switch_from_isr:
-#if CH_DBG_STATISTICS
-    jal     ra, _stats_start_measure_crit_thd
-#endif
-#if CH_DBG_SYSTEM_STATE_CHECK
-    jal     ra, __dbg_check_lock
-#endif
-    # Calls _port_switch at the end of the function
-    jal     ra, chSchDoPreemption
-#if CH_DBG_SYSTEM_STATE_CHECK
-    jal     ra, __dbg_check_unlock
-#endif
-#if CH_DBG_STATISTICS
-    jal     ra, _stats_stop_measure_crit_thd
-#endif
-
 .globl _port_exit_from_isr
 _port_exit_from_isr:
-    # Restore caller registers and csr registers from the thread stack
+    csrc    CSR_MSTATUS, MSTATUS_MIE
+    fence.i
     PORT_RESTORE_CONTEXT
-
-    # Leave interrupt handling and return to address stored in mepc.
     mret
-
 .option pop
-
-.globl handle_trap
-.weak handle_trap
-handle_trap:
-    j       handle_trap  # jump to handle_trap
 
 #endif /* !defined(__DOXYGEN__) */
 

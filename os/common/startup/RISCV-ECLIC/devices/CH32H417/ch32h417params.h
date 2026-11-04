@@ -27,11 +27,10 @@
 #ifndef _CH32H417PARAMS_H_
 #define _CH32H417PARAMS_H_
 
-/* Not defined because FPU isn't present. GCC produces a lot
-   of warnings if -Wundef is present, therefore this define. */
-#if !defined(__riscv_flen)
-#define __riscv_flen 0
-#endif
+/*
+ * FPU context save is selected automatically from __riscv_flen, which GCC
+ * defines when the F extension is present in -march (see riscv_encoding.h).
+ */
 
 #include "ch32h417.h"
 

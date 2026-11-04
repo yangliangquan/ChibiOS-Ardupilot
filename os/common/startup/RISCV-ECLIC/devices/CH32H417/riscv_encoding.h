@@ -33,6 +33,7 @@
 /* Standard RISC-V CSRs.                                                     */
 /*===========================================================================*/
 
+#define CSR_FCSR                        0x003
 #define CSR_MSTATUS                     0x300
 #define CSR_MSTATUSH                    0x310
 #define CSR_MIE_NEST                    0xBC8
@@ -53,7 +54,10 @@
 #define MSTATUS_MPIE                    (1UL << 7)
 #define MSTATUS_SPP                     (1UL << 8)
 #define MSTATUS_MPP                     (3UL << 11)
-#define MSTATUS_FS                      (3UL << 13)
+#define MSTATUS_FS_MASK                 (3UL << 13)
+#define MSTATUS_FS_INITIAL              (1UL << 13)
+#define MSTATUS_FS_CLEAN                (2UL << 13)
+#define MSTATUS_FS_DIRTY                (3UL << 13)
 
 /*===========================================================================*/
 /* QingKe V5 custom CSRs.                                                    */
@@ -92,11 +96,95 @@
 /* PFIC memory mapped registers (used via PFIC/core_riscv.h definitions). */
 #define PFIC_GISR_NESTSTA_MASK          0xFFUL
 
+/**
+ * @brief   Encodes an IRQ priority for the PFIC IPRIOR register.
+ * @details IPRIOR only uses bits [7:4], with PMTCFG=2 the two high bits of
+ *          that nibble are the preemption level (0 = highest) and the low
+ *          two bits are the sub priority. 0 is therefore the most urgent
+ *          value and 15 the least.
+ * @param[in] p         priority in the 0..15 range
+ */
+#define CH32_IRQ_PRIORITY(p)              (((p) & 15) << 4)
+
+/*===========================================================================*/
+/* Port configuration shared by C and assembler.                             */
+/*===========================================================================*/
+
+/**
+ * @brief   Single-precision FPU support.
+ * @note    GCC defines __riscv_flen to 32 when the F extension is enabled in
+ *          -march. The port then saves/restores the FP register file.
+ */
+#if defined(__riscv_flen) && (__riscv_flen > 0)
+#define PORT_RISCV_USE_FPU              1
+#else
+#define PORT_RISCV_USE_FPU              0
+#endif
+
+#if PORT_RISCV_USE_FPU
+#if __riscv_flen != 32
+#error "unsupported __riscv_flen, only single-precision F is supported"
+#endif
+#endif
+
+/**
+ * @brief   Number of interrupt preemption bits.
+ * @note    Must match both CSR 0x804 PMTCFG and CSR 0xBC1 NEST_LVL written by
+ *          crt0.S, and the per-thread interrupt stack reservation computed in
+ *          chcore.h. Two bits give four preemption/nesting levels.
+ */
+#if !defined(PORT_RISCV_PREEMPT_BITS)
+#define PORT_RISCV_PREEMPT_BITS         2
+#endif
+
+#define PORT_RISCV_NESTING_LEVELS       (1 << PORT_RISCV_PREEMPT_BITS)
+
+/**
+ * @brief   Interrupt context frame size.
+ * @note    Base frame is 20 words; the FP variant adds 21 words plus 3 words
+ *          of padding so the frame stays 16-byte aligned.
+ * @note    These values are also consumed by the assembler, do not add C
+ *          integer suffixes here.
+ */
+#define PORT_RISCV_EXTCTX_WORDS         20
+#if PORT_RISCV_USE_FPU
+#define PORT_RISCV_EXTCTX_FP_WORDS      24
+#else
+#define PORT_RISCV_EXTCTX_FP_WORDS      0
+#endif
+#define PORT_RISCV_EXTCTX_SIZE          \
+  ((PORT_RISCV_EXTCTX_WORDS + PORT_RISCV_EXTCTX_FP_WORDS) * 4)
+
+/**
+ * @brief   Thread context frame size.
+ * @note    Base frame is 16 words; the FP variant adds 12 callee-saved FP
+ *          registers, fcsr and 3 words of padding (32 words total).
+ */
+#define PORT_RISCV_INTCTX_WORDS         16
+#if PORT_RISCV_USE_FPU
+#define PORT_RISCV_INTCTX_FP_WORDS      16
+#else
+#define PORT_RISCV_INTCTX_FP_WORDS      0
+#endif
+#define PORT_RISCV_INTCTX_SIZE          \
+  ((PORT_RISCV_INTCTX_WORDS + PORT_RISCV_INTCTX_FP_WORDS) * 4)
+
+/* Interrupt frame FP offsets (bytes): ft0-ft7, ft8-ft11, fa0-fa7, fcsr. */
+#define PORT_RISCV_EXTCTX_FT0_OFF       (20 * 4)
+#define PORT_RISCV_EXTCTX_FT8_OFF       (28 * 4)
+#define PORT_RISCV_EXTCTX_FA0_OFF       (32 * 4)
+#define PORT_RISCV_EXTCTX_FCSR_OFF      (40 * 4)
+
+/* Thread frame FP offsets (bytes): fs0-fs11, fcsr. */
+#define PORT_RISCV_INTCTX_FS0_OFF       (16 * 4)
+#define PORT_RISCV_INTCTX_FCSR_OFF      (28 * 4)
+
 /*===========================================================================*/
 /* Assembler support.                                                        */
 /*===========================================================================*/
 
 #define REGBYTES                        4
+#define FREGBYTES                       4
 
 #if defined(_FROM_ASM_)
 
@@ -106,6 +194,14 @@
 
 .macro STORE reg, offset
     sw      \reg, \offset
+.endm
+
+.macro FLOAD reg, offset
+    flw     \reg, \offset
+.endm
+
+.macro FSTORE reg, offset
+    fsw     \reg, \offset
 .endm
 
 #endif /* !defined(_FROM_ASM_) */
