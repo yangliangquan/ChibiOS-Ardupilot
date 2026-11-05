@@ -99,7 +99,8 @@ include $(CHIBIOS)/os/hal/lib/streams/streams.mk
 LDSCRIPT= $(STARTUPLD)/CH32H417_FLASH.ld
 
 # C sources.
-CSRC = $(ALLCSRC) main.c
+CSRC = $(ALLCSRC) main.c test_dma.c test_counters.c test_fp.c test_console.c \
+       test_sdc.c test_wspi.c
 
 # C++ sources.
 CPPSRC = $(ALLCPPSRC)
