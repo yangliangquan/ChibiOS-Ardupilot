@@ -17,7 +17,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 /**
  * @file    compilers/GCC/chcoreasm.S
@@ -55,16 +55,6 @@
 #error "invalid chconf.h"
 #endif
 
-/* Disable interrupts globally. */
-.macro DISABLE_MIE
-    csrc CSR_MSTATUS, MSTATUS_MIE
-.endm
-
-/* Enable interrupts globally. */
-.macro ENABLE_MIE
-    csrs CSR_MSTATUS, MSTATUS_MIE
-.endm
-
 /* --------------------------------------------------------------------------
  * Start a thread by invoking its work function.
  *
@@ -78,18 +68,19 @@
 .option norelax
 .align 4
 .globl  _port_thread_start
+.type _port_thread_start,@function
 _port_thread_start:
 #if CH_DBG_SYSTEM_STATE_CHECK
     jal     ra, __dbg_check_unlock
 #endif
 #if CH_DBG_STATISTICS
-    jal     ra, _stats_stop_measure_crit_thd
+    jal     ra, __stats_stop_measure_crit_thd
 #endif
 #if PORT_RISCV_USE_FPU
     /* New threads start with the default FP control/status settings. */
     csrw    CSR_FCSR, zero
 #endif
-    ENABLE_MIE
+    csrs    CSR_MSTATUS, MSTATUS_MIE
     mv      a0, s1
     jalr    ra, s0
     li      a0, 0              # MSG_OK
@@ -97,6 +88,33 @@ _port_thread_start:
 
 _zombies:
     j       _zombies
+.option pop
+
+/* --------------------------------------------------------------------------
+ * Common interrupt entry.
+ *
+ * The vector stubs load the address of the C handler in gp and jump here,
+ * the whole entry/exit sequence is shared by all the vectors so that the
+ * code size does not grow with the number of interrupt sources.
+ * -------------------------------------------------------------------------- */
+.section .text
+.option push
+.option norelax
+.align 4
+.globl  _port_irq_entry
+.type _port_irq_entry,@function
+_port_irq_entry:
+    PORT_IRQ_ENTRY 1
+    j       _port_exit_from_isr
+
+/* Entry point for the exceptions, those never allow nesting. */
+.align 4
+.globl  _port_irq_entry_nonest
+.type _port_irq_entry_nonest,@function
+_port_irq_entry_nonest:
+    PORT_IRQ_ENTRY 0
+    j       _port_exit_from_isr
+.option pop
 
 /* --------------------------------------------------------------------------
  * Performs a context switch between two threads.
@@ -105,6 +123,7 @@ _zombies:
  * The frame layout must match struct port_intctx in chcore.h. The frame is
  * 16-byte aligned in both the integer-only and the FP variants.
  * -------------------------------------------------------------------------- */
+.section .text
 .option push
 .option norelax
 .align 4
@@ -112,36 +131,36 @@ _zombies:
 .type _port_switch,@function
 _port_switch:
     /* OLD THREAD CONTEXT SAVE BEGIN */
-    addi sp, sp, -PORT_RISCV_INTCTX_SIZE
+    addi    sp, sp, -PORT_RISCV_INTCTX_SIZE
 
-    STORE   ra,  (0*REGBYTES)(sp)
-    STORE   s0,  (1*REGBYTES)(sp)
-    STORE   s1,  (2*REGBYTES)(sp)
-    STORE   s2,  (3*REGBYTES)(sp)
-    STORE   s3,  (4*REGBYTES)(sp)
-    STORE   s4,  (5*REGBYTES)(sp)
-    STORE   s5,  (6*REGBYTES)(sp)
-    STORE   s6,  (7*REGBYTES)(sp)
-    STORE   s7,  (8*REGBYTES)(sp)
-    STORE   s8,  (9*REGBYTES)(sp)
-    STORE   s9,  (10*REGBYTES)(sp)
-    STORE   s10, (11*REGBYTES)(sp)
-    STORE   s11, (12*REGBYTES)(sp)
+    STORE   ra,  PORT_RISCV_INTCTX_RA_OFF
+    STORE   s0,  PORT_RISCV_INTCTX_S0_OFF
+    STORE   s1,  PORT_RISCV_INTCTX_S1_OFF
+    STORE   s2,  PORT_RISCV_INTCTX_S2_OFF
+    STORE   s3,  PORT_RISCV_INTCTX_S3_OFF
+    STORE   s4,  PORT_RISCV_INTCTX_S4_OFF
+    STORE   s5,  PORT_RISCV_INTCTX_S5_OFF
+    STORE   s6,  PORT_RISCV_INTCTX_S6_OFF
+    STORE   s7,  PORT_RISCV_INTCTX_S7_OFF
+    STORE   s8,  PORT_RISCV_INTCTX_S8_OFF
+    STORE   s9,  PORT_RISCV_INTCTX_S9_OFF
+    STORE   s10, PORT_RISCV_INTCTX_S10_OFF
+    STORE   s11, PORT_RISCV_INTCTX_S11_OFF
 #if PORT_RISCV_USE_FPU
-    FSTORE  fs0,  (16*FREGBYTES)(sp)
-    FSTORE  fs1,  (17*FREGBYTES)(sp)
-    FSTORE  fs2,  (18*FREGBYTES)(sp)
-    FSTORE  fs3,  (19*FREGBYTES)(sp)
-    FSTORE  fs4,  (20*FREGBYTES)(sp)
-    FSTORE  fs5,  (21*FREGBYTES)(sp)
-    FSTORE  fs6,  (22*FREGBYTES)(sp)
-    FSTORE  fs7,  (23*FREGBYTES)(sp)
-    FSTORE  fs8,  (24*FREGBYTES)(sp)
-    FSTORE  fs9,  (25*FREGBYTES)(sp)
-    FSTORE  fs10, (26*FREGBYTES)(sp)
-    FSTORE  fs11, (27*FREGBYTES)(sp)
+    FSTORE  fs0,  PORT_RISCV_INTCTX_FS0_OFF
+    FSTORE  fs1,  (PORT_RISCV_INTCTX_FS0_OFF + 1 * FREGBYTES)
+    FSTORE  fs2,  (PORT_RISCV_INTCTX_FS0_OFF + 2 * FREGBYTES)
+    FSTORE  fs3,  (PORT_RISCV_INTCTX_FS0_OFF + 3 * FREGBYTES)
+    FSTORE  fs4,  (PORT_RISCV_INTCTX_FS0_OFF + 4 * FREGBYTES)
+    FSTORE  fs5,  (PORT_RISCV_INTCTX_FS0_OFF + 5 * FREGBYTES)
+    FSTORE  fs6,  (PORT_RISCV_INTCTX_FS0_OFF + 6 * FREGBYTES)
+    FSTORE  fs7,  (PORT_RISCV_INTCTX_FS0_OFF + 7 * FREGBYTES)
+    FSTORE  fs8,  (PORT_RISCV_INTCTX_FS0_OFF + 8 * FREGBYTES)
+    FSTORE  fs9,  (PORT_RISCV_INTCTX_FS0_OFF + 9 * FREGBYTES)
+    FSTORE  fs10, (PORT_RISCV_INTCTX_FS0_OFF + 10 * FREGBYTES)
+    FSTORE  fs11, (PORT_RISCV_INTCTX_FS0_OFF + 11 * FREGBYTES)
     csrr    t0, CSR_FCSR
-    STORE   t0, (28*REGBYTES)(sp)
+    STORE   t0, PORT_RISCV_INTCTX_FCSR_OFF
 #endif
 
     /* Order all memory operations of the outgoing thread before the switch on
@@ -149,40 +168,40 @@ _port_switch:
     fence   iorw, iorw
 
     /* Store stack pointer in otp->ctx. */
-    STORE   sp, CONTEXT_OFFSET(a1)
+    STORE_REG   sp, CONTEXT_OFFSET, a1
     /* OLD THREAD CONTEXT SAVE END */
 
     /* NEW THREAD CONTEXT RESTORE BEGIN */
-    LOAD    sp, CONTEXT_OFFSET(a0)
+    LOAD_REG    sp, CONTEXT_OFFSET, a0
 
-    LOAD    ra,  (0*REGBYTES)(sp)
-    LOAD    s0,  (1*REGBYTES)(sp)
-    LOAD    s1,  (2*REGBYTES)(sp)
-    LOAD    s2,  (3*REGBYTES)(sp)
-    LOAD    s3,  (4*REGBYTES)(sp)
-    LOAD    s4,  (5*REGBYTES)(sp)
-    LOAD    s5,  (6*REGBYTES)(sp)
-    LOAD    s6,  (7*REGBYTES)(sp)
-    LOAD    s7,  (8*REGBYTES)(sp)
-    LOAD    s8,  (9*REGBYTES)(sp)
-    LOAD    s9,  (10*REGBYTES)(sp)
-    LOAD    s10, (11*REGBYTES)(sp)
-    LOAD    s11, (12*REGBYTES)(sp)
+    LOAD    ra,  PORT_RISCV_INTCTX_RA_OFF
+    LOAD    s0,  PORT_RISCV_INTCTX_S0_OFF
+    LOAD    s1,  PORT_RISCV_INTCTX_S1_OFF
+    LOAD    s2,  PORT_RISCV_INTCTX_S2_OFF
+    LOAD    s3,  PORT_RISCV_INTCTX_S3_OFF
+    LOAD    s4,  PORT_RISCV_INTCTX_S4_OFF
+    LOAD    s5,  PORT_RISCV_INTCTX_S5_OFF
+    LOAD    s6,  PORT_RISCV_INTCTX_S6_OFF
+    LOAD    s7,  PORT_RISCV_INTCTX_S7_OFF
+    LOAD    s8,  PORT_RISCV_INTCTX_S8_OFF
+    LOAD    s9,  PORT_RISCV_INTCTX_S9_OFF
+    LOAD    s10, PORT_RISCV_INTCTX_S10_OFF
+    LOAD    s11, PORT_RISCV_INTCTX_S11_OFF
 #if PORT_RISCV_USE_FPU
-    LOAD    t0, (28*REGBYTES)(sp)
+    LOAD    t0, PORT_RISCV_INTCTX_FCSR_OFF
     csrw    CSR_FCSR, t0
-    FLOAD   fs0,  (16*FREGBYTES)(sp)
-    FLOAD   fs1,  (17*FREGBYTES)(sp)
-    FLOAD   fs2,  (18*FREGBYTES)(sp)
-    FLOAD   fs3,  (19*FREGBYTES)(sp)
-    FLOAD   fs4,  (20*FREGBYTES)(sp)
-    FLOAD   fs5,  (21*FREGBYTES)(sp)
-    FLOAD   fs6,  (22*FREGBYTES)(sp)
-    FLOAD   fs7,  (23*FREGBYTES)(sp)
-    FLOAD   fs8,  (24*FREGBYTES)(sp)
-    FLOAD   fs9,  (25*FREGBYTES)(sp)
-    FLOAD   fs10, (26*FREGBYTES)(sp)
-    FLOAD   fs11, (27*FREGBYTES)(sp)
+    FLOAD   fs0,  PORT_RISCV_INTCTX_FS0_OFF
+    FLOAD   fs1,  (PORT_RISCV_INTCTX_FS0_OFF + 1 * FREGBYTES)
+    FLOAD   fs2,  (PORT_RISCV_INTCTX_FS0_OFF + 2 * FREGBYTES)
+    FLOAD   fs3,  (PORT_RISCV_INTCTX_FS0_OFF + 3 * FREGBYTES)
+    FLOAD   fs4,  (PORT_RISCV_INTCTX_FS0_OFF + 4 * FREGBYTES)
+    FLOAD   fs5,  (PORT_RISCV_INTCTX_FS0_OFF + 5 * FREGBYTES)
+    FLOAD   fs6,  (PORT_RISCV_INTCTX_FS0_OFF + 6 * FREGBYTES)
+    FLOAD   fs7,  (PORT_RISCV_INTCTX_FS0_OFF + 7 * FREGBYTES)
+    FLOAD   fs8,  (PORT_RISCV_INTCTX_FS0_OFF + 8 * FREGBYTES)
+    FLOAD   fs9,  (PORT_RISCV_INTCTX_FS0_OFF + 9 * FREGBYTES)
+    FLOAD   fs10, (PORT_RISCV_INTCTX_FS0_OFF + 10 * FREGBYTES)
+    FLOAD   fs11, (PORT_RISCV_INTCTX_FS0_OFF + 11 * FREGBYTES)
 #endif
 
     addi    sp, sp, PORT_RISCV_INTCTX_SIZE
@@ -194,21 +213,90 @@ _port_switch:
 /* --------------------------------------------------------------------------
  * ISR exit path.
  *
- * All vector stubs tail-jump here after the C handler returned. Interrupts
- * are disabled before the restore and stay disabled until mret re-enables
- * them from the saved mstatus.MPIE. The saved mstatus itself has MIE=0, so
- * a nested trap can never observe a half-restored frame.
+ * All the vector stubs tail-jump here after the C handler returned. The
+ * frame of the interrupted thread is at the top of the stack.
+ *
+ * If the handler requested a preemption, and this is the outermost
+ * interrupt level, the exception return is redirected to the switch
+ * adapter: the frame is left on the interrupted thread stack and the
+ * adapter performs the context switch, then restores the frame and
+ * returns to the interrupted point. This is the RISC-V equivalent of the
+ * ARMv7-M "return to base" trick, it keeps the reschedule atomic with
+ * respect to the interrupt exit.
+ *
+ * Interrupts are disabled before the restore and stay disabled until mret
+ * re-enables them from the saved mstatus.MPIE. The saved mstatus itself
+ * has MIE=0, so a nested trap can never observe a half-restored frame.
  * -------------------------------------------------------------------------- */
 .section .text
 .option push
 .option norelax
 .align 4
 .globl _port_exit_from_isr
+.type _port_exit_from_isr,@function
 _port_exit_from_isr:
     csrc    CSR_MSTATUS, MSTATUS_MIE
-    fence.i
-    PORT_RESTORE_CONTEXT
+    fence   iorw, iorw
+
+    /* Asking the port whether the interrupted thread must be preempted, the
+       check needs the scheduler state and the interrupt nesting level. */
+    call    _port_irq_preempt_pending
+    beqz    a0, _port_restore_from_isr
+
+    /* Redirecting the exception return to the switch adapter, the frame is
+       kept on the interrupted thread stack. Interrupts stay disabled during
+       the context switch, mret would otherwise re-enable them from MPIE. */
+    LOAD    t0, PORT_RISCV_EXTCTX_MSTATUS_OFF
+    andi    t0, t0, ~MSTATUS_MPIE
+    csrw    CSR_MSTATUS, t0
+    la      t0, _port_switch_from_isr
+    csrw    CSR_MEPC, t0
     mret
+
+/* --------------------------------------------------------------------------
+ * Restores the interrupted context from the frame at sp and returns to the
+ * interrupted point.
+ *
+ * The argument area pushed by the vector stub is discarded as well.
+ * -------------------------------------------------------------------------- */
+.align 4
+.globl _port_restore_from_isr
+.type _port_restore_from_isr,@function
+_port_restore_from_isr:
+    PORT_RESTORE_CONTEXT
+    addi    sp, sp, PORT_RISCV_IRQ_ARG_SIZE
+    mret
+
+/* --------------------------------------------------------------------------
+ * Switch adapter.
+ *
+ * Reached through the exception return redirection done above, the frame of
+ * the interrupted thread is at the top of the stack. The context switch is
+ * performed here, the interrupted thread is scheduled back in later and the
+ * execution resumes after the call, where the frame is finally restored.
+ *
+ * Note, the interrupt frame is still on the stack while the adapter runs,
+ * but the frames pushed by a nested interrupt are allocated below it, so
+ * the interrupted context cannot be damaged.
+ * -------------------------------------------------------------------------- */
+.align 4
+.globl _port_switch_from_isr
+.type _port_switch_from_isr,@function
+_port_switch_from_isr:
+#if CH_DBG_STATISTICS
+    call    __stats_start_measure_crit_thd
+#endif
+#if CH_DBG_SYSTEM_STATE_CHECK
+    call    __dbg_check_lock
+#endif
+    call    chSchDoPreemption
+#if CH_DBG_SYSTEM_STATE_CHECK
+    call    __dbg_check_unlock
+#endif
+#if CH_DBG_STATISTICS
+    call    __stats_stop_measure_crit_thd
+#endif
+    j       _port_restore_from_isr
 .option pop
 
 #endif /* !defined(__DOXYGEN__) */

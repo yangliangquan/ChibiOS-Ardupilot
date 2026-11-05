@@ -133,17 +133,18 @@
  */
 #if !defined(PORT_INT_REQUIRED_STACK) || defined(__DOXYGEN__)
 #define PORT_INT_REQUIRED_STACK                                             \
-  (PORT_RISCV_NESTING_LEVELS * (PORT_RISCV_EXTCTX_SIZE + 64U))
+  (PORT_RISCV_NESTING_LEVELS * (PORT_RISCV_EXTCTX_SIZE +                     \
+                                PORT_RISCV_IRQ_ARG_SIZE +                     \
+                                PORT_RISCV_ISR_C_STACK_SIZE))
 #endif
 
 /**
- * @brief   Software interrupt priority used for deferred preemption.
- * @details The software interrupt must have the lowest priority in the
- *          system so that it only runs after every IRQ handler has returned.
- *          Application interrupts must use a numerically smaller value.
+ * @brief   Stack space reserved for the C code of an interrupt handler.
+ * @note    The handler runs on the stack of the interrupted thread, the
+ *          value is a safety margin on top of the interrupt frame itself.
  */
-#if !defined(PORT_RISCV_SW_IRQ_PRIORITY) || defined(__DOXYGEN__)
-#define PORT_RISCV_SW_IRQ_PRIORITY          0xFFU
+#if !defined(PORT_RISCV_ISR_C_STACK_SIZE) || defined(__DOXYGEN__)
+#define PORT_RISCV_ISR_C_STACK_SIZE       64U
 #endif
 
 /**
@@ -290,6 +291,38 @@ static_assert((sizeof(struct port_extctx) % 16U) == 0U,
               "port_extctx alignment mismatch");
 static_assert((sizeof(struct port_intctx) % 16U) == 0U,
               "port_intctx alignment mismatch");
+static_assert(offsetof(struct port_extctx, ra) == PORT_RISCV_EXTCTX_RA_OFF,
+              "port_extctx.ra offset mismatch");
+static_assert(offsetof(struct port_extctx, tp) == PORT_RISCV_EXTCTX_TP_OFF,
+              "port_extctx.tp offset mismatch");
+static_assert(offsetof(struct port_extctx, t0) == PORT_RISCV_EXTCTX_T0_OFF,
+              "port_extctx.t0 offset mismatch");
+static_assert(offsetof(struct port_extctx, t1) == PORT_RISCV_EXTCTX_T1_OFF,
+              "port_extctx.t1 offset mismatch");
+static_assert(offsetof(struct port_extctx, t2) == PORT_RISCV_EXTCTX_T2_OFF,
+              "port_extctx.t2 offset mismatch");
+static_assert(offsetof(struct port_extctx, a0) == PORT_RISCV_EXTCTX_A0_OFF,
+              "port_extctx.a0 offset mismatch");
+static_assert(offsetof(struct port_extctx, a6) == PORT_RISCV_EXTCTX_A6_OFF,
+              "port_extctx.a6 offset mismatch");
+static_assert(offsetof(struct port_extctx, a7) == PORT_RISCV_EXTCTX_A7_OFF,
+              "port_extctx.a7 offset mismatch");
+static_assert(offsetof(struct port_extctx, mepc) == PORT_RISCV_EXTCTX_MEPC_OFF,
+              "port_extctx.mepc offset mismatch");
+static_assert(offsetof(struct port_extctx, mcause) == PORT_RISCV_EXTCTX_MCAUSE_OFF,
+              "port_extctx.mcause offset mismatch");
+static_assert(offsetof(struct port_extctx, mstatus) == PORT_RISCV_EXTCTX_MSTATUS_OFF,
+              "port_extctx.mstatus offset mismatch");
+static_assert(offsetof(struct port_extctx, t3) == PORT_RISCV_EXTCTX_T3_OFF,
+              "port_extctx.t3 offset mismatch");
+static_assert(offsetof(struct port_extctx, t6) == PORT_RISCV_EXTCTX_T6_OFF,
+              "port_extctx.t6 offset mismatch");
+static_assert(offsetof(struct port_intctx, ra) == PORT_RISCV_INTCTX_RA_OFF,
+              "port_intctx.ra offset mismatch");
+static_assert(offsetof(struct port_intctx, s0) == PORT_RISCV_INTCTX_S0_OFF,
+              "port_intctx.s0 offset mismatch");
+static_assert(offsetof(struct port_intctx, s11) == PORT_RISCV_INTCTX_S11_OFF,
+              "port_intctx.s11 offset mismatch");
 #else
 _Static_assert(sizeof(struct port_extctx) == PORT_RISCV_EXTCTX_SIZE,
                "port_extctx size mismatch");
@@ -299,6 +332,38 @@ _Static_assert((sizeof(struct port_extctx) % 16U) == 0U,
                "port_extctx alignment mismatch");
 _Static_assert((sizeof(struct port_intctx) % 16U) == 0U,
                "port_intctx alignment mismatch");
+_Static_assert(offsetof(struct port_extctx, ra) == PORT_RISCV_EXTCTX_RA_OFF,
+               "port_extctx.ra offset mismatch");
+_Static_assert(offsetof(struct port_extctx, tp) == PORT_RISCV_EXTCTX_TP_OFF,
+               "port_extctx.tp offset mismatch");
+_Static_assert(offsetof(struct port_extctx, t0) == PORT_RISCV_EXTCTX_T0_OFF,
+               "port_extctx.t0 offset mismatch");
+_Static_assert(offsetof(struct port_extctx, t1) == PORT_RISCV_EXTCTX_T1_OFF,
+               "port_extctx.t1 offset mismatch");
+_Static_assert(offsetof(struct port_extctx, t2) == PORT_RISCV_EXTCTX_T2_OFF,
+               "port_extctx.t2 offset mismatch");
+_Static_assert(offsetof(struct port_extctx, a0) == PORT_RISCV_EXTCTX_A0_OFF,
+               "port_extctx.a0 offset mismatch");
+_Static_assert(offsetof(struct port_extctx, a6) == PORT_RISCV_EXTCTX_A6_OFF,
+               "port_extctx.a6 offset mismatch");
+_Static_assert(offsetof(struct port_extctx, a7) == PORT_RISCV_EXTCTX_A7_OFF,
+               "port_extctx.a7 offset mismatch");
+_Static_assert(offsetof(struct port_extctx, mepc) == PORT_RISCV_EXTCTX_MEPC_OFF,
+               "port_extctx.mepc offset mismatch");
+_Static_assert(offsetof(struct port_extctx, mcause) == PORT_RISCV_EXTCTX_MCAUSE_OFF,
+               "port_extctx.mcause offset mismatch");
+_Static_assert(offsetof(struct port_extctx, mstatus) == PORT_RISCV_EXTCTX_MSTATUS_OFF,
+               "port_extctx.mstatus offset mismatch");
+_Static_assert(offsetof(struct port_extctx, t3) == PORT_RISCV_EXTCTX_T3_OFF,
+               "port_extctx.t3 offset mismatch");
+_Static_assert(offsetof(struct port_extctx, t6) == PORT_RISCV_EXTCTX_T6_OFF,
+               "port_extctx.t6 offset mismatch");
+_Static_assert(offsetof(struct port_intctx, ra) == PORT_RISCV_INTCTX_RA_OFF,
+               "port_intctx.ra offset mismatch");
+_Static_assert(offsetof(struct port_intctx, s0) == PORT_RISCV_INTCTX_S0_OFF,
+               "port_intctx.s0 offset mismatch");
+_Static_assert(offsetof(struct port_intctx, s11) == PORT_RISCV_INTCTX_S11_OFF,
+               "port_intctx.s11 offset mismatch");
 #endif
 
 /**
@@ -309,6 +374,33 @@ _Static_assert((sizeof(struct port_intctx) % 16U) == 0U,
 struct port_context {
   struct port_intctx *sp;
 };
+
+/**
+ * @brief   Initializes the floating point part of a thread context.
+ * @details A thread starts with a well defined floating point register file,
+ *          this matters for the threads whose working area is not zero
+ *          initialized (dynamically allocated working areas).
+ *
+ * @param[in] ctxp      pointer to the thread context to be initialized
+ */
+static inline void _port_init_fp_context(struct port_intctx *ctxp) {
+
+#if PORT_RISCV_USE_FPU
+  ctxp->fs0 = 0U;
+  ctxp->fs1 = 0U;
+  ctxp->fs2 = 0U;
+  ctxp->fs3 = 0U;
+  ctxp->fs4 = 0U;
+  ctxp->fs5 = 0U;
+  ctxp->fs6 = 0U;
+  ctxp->fs7 = 0U;
+  ctxp->fs8 = 0U;
+  ctxp->fs9 = 0U;
+  ctxp->fs10 = 0U;
+  ctxp->fs11 = 0U;
+  ctxp->fcsr = 0U;
+#endif
+}
 
 #endif /* !defined(_FROM_ASM_) */
 
@@ -328,6 +420,7 @@ struct port_context {
     (tp)->ctx.sp->ra = (uint32_t)_port_thread_start;                           \
     (tp)->ctx.sp->s0 = (uint32_t)(pf);                                         \
     (tp)->ctx.sp->s1 = (uint32_t)(arg);                                        \
+    _port_init_fp_context((tp)->ctx.sp);                                       \
   }
 
 /**
@@ -351,18 +444,23 @@ struct port_context {
 
 /**
  * @brief   Priority level verification macro.
+ * @note    The PFIC encodes four priority bits, the drivers use the
+ *          0..15 range.
  */
-#define PORT_IRQ_IS_VALID_PRIORITY(n) true
+#define PORT_IRQ_IS_VALID_PRIORITY(n)                                         \
+  ((n) <= PORT_RISCV_LOWEST_IRQ_PRIORITY)
 
 /**
  * @brief   Priority level verification macro.
  */
-#define PORT_IRQ_IS_VALID_KERNEL_PRIORITY(n) true
+#define PORT_IRQ_IS_VALID_KERNEL_PRIORITY(n) PORT_IRQ_IS_VALID_PRIORITY(n)
 
 /**
  * @brief   IRQ prologue code.
  * @details This macro must be inserted at the start of all IRQ handlers
  *          enabled to invoke system APIs.
+ * @note    The interrupt context is saved by the common entry point before
+ *          the handler is invoked, nothing has to be done here.
  */
 #define PORT_IRQ_PROLOGUE()
 
@@ -370,17 +468,15 @@ struct port_context {
  * @brief   IRQ epilogue code.
  * @details This macro must be inserted at the end of all IRQ handlers
  *          enabled to invoke system APIs.
- * @note    The actual context switch is deferred to the software interrupt,
- *          which is programmed at the lowest priority and therefore runs
- *          only after every IRQ handler has returned. Interrupts are left
- *          disabled here on purpose; the vector stub restores the context
- *          and returns with @p mret, and the pending software interrupt is
- *          then serviced at thread level.
+ * @note    The macro only records that a reschedule is required, the actual
+ *          context switch is performed by the interrupt exit path, at the
+ *          outermost interrupt level, so that the switch is atomic with
+ *          respect to the interrupt exit. This is the RISC-V equivalent of
+ *          the ARMv7-M PendSV mechanism.
  */
 #define PORT_IRQ_EPILOGUE() do {                                               \
-                            port_lock_from_isr();                              \
                             if (chSchIsPreemptionRequired()) {                 \
-                              _port_preempt_pend();                            \
+                              _port_preempt_request();                        \
                             }                                                  \
                           } while (0)
 
@@ -463,10 +559,18 @@ extern "C" {
 void _port_switch(thread_t *ntp, thread_t *otp);
 void _port_exit_from_isr(void);
 void _port_thread_start(void);
-void SW_Handler(void);
+bool _port_irq_preempt_pending(void);
 #ifdef __cplusplus
 }
 #endif
+
+/**
+ * @brief   Reschedule request flag.
+ * @details Set by @p PORT_IRQ_EPILOGUE() when a higher priority thread is
+ *          ready, consumed by the interrupt exit path which performs the
+ *          context switch.
+ */
+extern volatile bool port_preempt_pending;
 
 #endif /* !defined(_FROM_ASM_) */
 
@@ -484,13 +588,6 @@ void SW_Handler(void);
 static inline void port_init(os_instance_t *oip) {
 
   (void)oip;
-
-  /* Deferred preemption uses the core software interrupt. It is programmed
-     at the lowest priority so that it only runs after all IRQ handlers have
-     returned, at a clean thread-level boundary. */
-  NVIC_SetPriority(Software_IRQn, (uint8_t)PORT_RISCV_SW_IRQ_PRIORITY);
-  NVIC_ClearPendingIRQ(Software_IRQn);
-  NVIC_EnableIRQ(Software_IRQn);
 }
 
 /**
@@ -516,6 +613,28 @@ static inline syssts_t port_get_irq_status(void) {
 static inline bool port_irq_enabled(syssts_t sts) { return sts & MSTATUS_MIE; }
 
 /**
+ * @brief   Returns the current interrupt nesting level.
+ * @details The PFIC global interrupt state register mirrors the nesting
+ *          state of the core interrupt controller (CSR 0xBC1, NEST_STA),
+ *          the value is (1 << level) - 1 so the level is the number of
+ *          trailing one bits. Zero means that no interrupt is being
+ *          serviced.
+ *
+ * @return              The nesting level, zero when not in an ISR.
+ */
+static inline uint32_t port_isr_nesting_level(void) {
+  uint32_t neststa = NVIC->GISR & PFIC_GISR_NESTSTA_MASK;
+  uint32_t level = 0U;
+
+  while (neststa != 0U) {
+    neststa >>= 1;
+    level++;
+  }
+
+  return level;
+}
+
+/**
  * @brief   Determines the current execution context.
  *
  * @return              The execution context.
@@ -528,12 +647,34 @@ static inline bool port_is_isr_context(void) {
 }
 
 /**
+ * @brief   Checks the interrupt nesting overflow flag.
+ * @details The flag is set by the hardware when an interrupt is taken while
+ *          the maximum nesting level has already been reached, the condition
+ *          is not recoverable because the CPU stack cannot be unwound.
+ *
+ * @return              The overflow state.
+ * @retval true         the nesting levels have been overflowed.
+ * @retval false        no overflow.
+ */
+static inline bool port_isr_nesting_overflow(void) {
+  uint32_t val;
+
+  __asm__ volatile("csrr %0, 0xBC1" : "=r"(val));
+
+  return (val & (1UL << 30)) != 0U;
+}
+
+/**
  * @brief   Kernel-lock action.
  * @details Usually this function just disables interrupts but may perform more
  *          actions.
+ * @note    No memory barrier is required, the RISC-V trap is ordered with
+ *          respect to the memory accesses performed before it, so an
+ *          interrupt handler cannot observe a partially completed critical
+ *          section.
  */
 static inline void port_lock(void) {
-  __asm__ volatile("csrc %0, %1\n\tfence.i"
+  __asm__ volatile("csrc %0, %1"
                    : : "i"(CSR_MSTATUS), "i"(MSTATUS_MIE) : "memory");
 }
 
@@ -563,14 +704,13 @@ static inline void port_lock_from_isr(void) { port_lock(); }
 static inline void port_unlock_from_isr(void) { port_unlock(); }
 
 /**
- * @brief   Pends the software interrupt used for deferred preemption.
- * @note    Orders all prior scheduler memory operations before the PFIC
- *          pending store on the out-of-order V5F.
+ * @brief   Records that a reschedule is required.
+ * @note    The flag is consumed by the interrupt exit path, which performs
+ *          the actual context switch.
  */
-static inline void _port_preempt_pend(void) {
+static inline void _port_preempt_request(void) {
 
-  __asm__ volatile("fence iorw, iorw" : : : "memory");
-  NVIC_SetPendingIRQ(Software_IRQn);
+  port_preempt_pending = true;
 }
 
 /**
@@ -578,7 +718,7 @@ static inline void _port_preempt_pend(void) {
  * @note    Of course non-maskable interrupt sources are not included.
  */
 static inline void port_disable(void) {
-  __asm__ volatile("csrc %0, %1\n\tfence.i"
+  __asm__ volatile("csrc %0, %1"
                    : : "i"(CSR_MSTATUS), "i"(MSTATUS_MIE) : "memory");
 }
 
@@ -587,7 +727,7 @@ static inline void port_disable(void) {
  * @note    Interrupt sources above kernel level remains enabled.
  */
 static inline void port_suspend(void) {
-  __asm__ volatile("csrc %0, %1\n\tfence.i"
+  __asm__ volatile("csrc %0, %1"
                    : : "i"(CSR_MSTATUS), "i"(MSTATUS_MIE) : "memory");
 }
 

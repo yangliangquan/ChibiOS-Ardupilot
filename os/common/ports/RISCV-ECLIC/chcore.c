@@ -15,7 +15,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 /**
  * @file    chcore.c
@@ -46,35 +46,58 @@ _Static_assert(offsetof(thread_t, ctx) == PORT_CONTEXT_OFFSET,
                "thread_t.ctx offset mismatch");
 
 /*===========================================================================*/
+/* Module exported variables.                                                */
+/*===========================================================================*/
+
+/**
+ * @brief   Reschedule request flag.
+ * @details Set by @p PORT_IRQ_EPILOGUE() when a higher priority thread is
+ *          ready, consumed by the interrupt exit path which performs the
+ *          context switch.
+ */
+volatile bool port_preempt_pending;
+
+/*===========================================================================*/
 /* Module exported functions.                                                */
 /*===========================================================================*/
 
 /**
- * @brief   Software interrupt handler used for deferred preemption.
+ * @brief   Evaluates if the interrupted thread must be preempted.
+ * @details Called from the interrupt exit path, the function returns TRUE
+ *          only if a reschedule has been requested and the core is at the
+ *          outermost interrupt level.
+ * @note    Deeper interrupt levels do not perform the switch, the request
+ *          is left pending for the outermost level, this is the equivalent
+ *          of the ARMv7-M "return to base" condition.
  *
- * @details The IRQ epilogue only pends this interrupt; the switch itself is
- *          performed here, at the lowest interrupt priority, once every IRQ
- *          handler has returned. This is the RISC-V equivalent of the
- *          ARMv7-M PendSV mechanism.
+ * @return              The preemption state.
+ * @retval true         a context switch must be performed.
+ * @retval false        the interrupted thread must be resumed.
  *
  * @special
  */
-void SW_Handler(void) {
+bool _port_irq_preempt_pending(void) {
 
-  NVIC_ClearPendingIRQ(Software_IRQn);
-
-#if CH_DBG_SYSTEM_STATE_CHECK
-  __dbg_check_lock();
+#if CH_DBG_ENABLE_ASSERTS
+  /* An overflow of the interrupt nesting levels is a fatal condition: the
+     hardware cannot exit from the exception that detected it (QingKe V5
+     processor manual, CSR 0xBC1 NEST_OV). */
+  chDbgAssert(port_isr_nesting_overflow() == false, "interrupt nesting overflow");
 #endif
 
-  /* The pending bit is coalesced, re-check the scheduler state. */
-  if (chSchIsPreemptionRequired()) {
-    chSchDoPreemption();
+  if (!port_preempt_pending) {
+    return false;
   }
 
-#if CH_DBG_SYSTEM_STATE_CHECK
-  __dbg_check_unlock();
-#endif
+  if (port_isr_nesting_level() > 1U) {
+    /* A nested interrupt level, the switch is performed by the outermost
+       level, the request is left pending. */
+    return false;
+  }
+
+  port_preempt_pending = false;
+
+  return true;
 }
 
 /** @} */

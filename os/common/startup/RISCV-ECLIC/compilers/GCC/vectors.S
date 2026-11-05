@@ -17,7 +17,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 
 /**
  * @file    vectors.S
@@ -25,9 +25,10 @@
  *
  * @details The hardware dispatches interrupts and exceptions by fetching
  *          the absolute address at vector_base + id*4 (mtvec MODE0|MODE1).
- *          Each slot points to a stub that saves the context (software
- *          stacking), invokes the weak handler symbol with the ChibiOS
- *          bool-returning ISR protocol and applies the exit protocol.
+ *          Each slot points to a stub that pushes the address of the
+ *          handler on the stack and jumps to the common entry point, the
+ *          whole save/restore sequence is shared by all the vectors so the
+ *          code size does not grow with the number of interrupt sources.
  *
  * @addtogroup RISCV_ECLIC_STARTUP
  * @{
@@ -217,81 +218,41 @@ _vec_default:
     j       1b
 
 /* Core exceptions and system interrupts.
-   Exceptions and the software interrupt never allow nesting; the external
-   and core timer interrupts do. */
+   Exceptions never allow nesting, the external and the core timer
+   interrupts do. */
+.macro VECN name
 .align  2
-.globl _vec_NMI_Handler
-_vec_NMI_Handler:
-    PORT_IRQ_STUB_NONEST NMI_Handler
+.globl _vec_\name
+.type _vec_\name,@function
+_vec_\name:
+    PORT_IRQ_STUB_PROLOGUE \name
+    j       _port_irq_entry_nonest
+.endm
 
-.align  2
-.globl _vec_HardFault_Handler
-_vec_HardFault_Handler:
-    PORT_IRQ_STUB_NONEST HardFault_Handler
-
-.align  2
-.globl _vec_Ecall_M_Mode_Handler
-_vec_Ecall_M_Mode_Handler:
-    PORT_IRQ_STUB_NONEST Ecall_M_Mode_Handler
-
-.align  2
-.globl _vec_Ecall_U_Mode_Handler
-_vec_Ecall_U_Mode_Handler:
-    PORT_IRQ_STUB_NONEST Ecall_U_Mode_Handler
-
-.align  2
-.globl _vec_Break_Point_Handler
-_vec_Break_Point_Handler:
-    PORT_IRQ_STUB_NONEST Break_Point_Handler
-
-.align  2
-.globl _vec_SysTick0_Handler
-_vec_SysTick0_Handler:
-    PORT_IRQ_STUB SysTick0_Handler
-
-.align  2
-.globl _vec_SysTick1_Handler
-_vec_SysTick1_Handler:
-    PORT_IRQ_STUB SysTick1_Handler
-
-.align  2
-.globl _vec_SW_Handler
-_vec_SW_Handler:
-    PORT_IRQ_STUB_NONEST SW_Handler
-
-.align  2
-.globl _vec_IPC_CH0_Handler
-_vec_IPC_CH0_Handler:
-    PORT_IRQ_STUB IPC_CH0_Handler
-
-.align  2
-.globl _vec_IPC_CH1_Handler
-_vec_IPC_CH1_Handler:
-    PORT_IRQ_STUB IPC_CH1_Handler
-
-.align  2
-.globl _vec_IPC_CH2_Handler
-_vec_IPC_CH2_Handler:
-    PORT_IRQ_STUB IPC_CH2_Handler
-
-.align  2
-.globl _vec_IPC_CH3_Handler
-_vec_IPC_CH3_Handler:
-    PORT_IRQ_STUB IPC_CH3_Handler
-
-.align  2
-.globl _vec_HSEM_Handler
-_vec_HSEM_Handler:
-    PORT_IRQ_STUB HSEM_Handler
-
-/* External interrupts. */
 .macro VEC name
 .align  2
 .globl _vec_\name
+.type _vec_\name,@function
 _vec_\name:
-    PORT_IRQ_STUB \name
+    PORT_IRQ_STUB_PROLOGUE \name
+    j       _port_irq_entry
 .endm
 
+VECN    NMI_Handler
+VECN    HardFault_Handler
+VECN    Ecall_M_Mode_Handler
+VECN    Ecall_U_Mode_Handler
+VECN    Break_Point_Handler
+VEC     SysTick0_Handler
+VEC     SysTick1_Handler
+VEC     SW_Handler
+VEC     IPC_CH0_Handler
+VEC     IPC_CH1_Handler
+VEC     IPC_CH2_Handler
+VEC     IPC_CH3_Handler
+VEC     HSEM_Handler
+
+/* External interrupts. */
 VEC     WWDG_IRQHandler
 VEC     EXTI15_8_IRQHandler
 VEC     FLASH_IRQHandler

@@ -140,6 +140,24 @@
 #define PORT_RISCV_NESTING_LEVELS       (1 << PORT_RISCV_PREEMPT_BITS)
 
 /**
+ * @brief   Number of interrupt priority levels exposed by the PFIC.
+ * @note    With PMTCFG=2 the IPRIOR register encodes four bits, two of them
+ *          are the preemption level and the remaining two the sub priority,
+ *          so the interrupt priorities usable by the drivers are 0..15.
+ */
+#define PORT_RISCV_IRQ_PRIORITY_LEVELS  16
+
+/**
+ * @brief   Lowest (least urgent) interrupt priority.
+ */
+#define PORT_RISCV_LOWEST_IRQ_PRIORITY  15
+
+/**
+ * @brief   Highest (most urgent) interrupt priority.
+ */
+#define PORT_RISCV_HIGHEST_IRQ_PRIORITY 0
+
+/**
  * @brief   Interrupt context frame size.
  * @note    Base frame is 20 words; the FP variant adds 21 words plus 3 words
  *          of padding so the frame stays 16-byte aligned.
@@ -180,6 +198,74 @@
 #define PORT_RISCV_INTCTX_FCSR_OFF      (28 * 4)
 
 /*===========================================================================*/
+/* Interrupt frame layout (struct port_extctx).                              */
+/*===========================================================================*/
+
+/**
+ * @brief   Size, in bytes, of the argument area pushed by the vector stubs.
+ * @details The stubs cannot pass the address of the handler in a register
+ *          because the interrupted context has not been saved yet, so the
+ *          address is pushed on the stack together with the value of the
+ *          register used to compute it. The area is a multiple of 16 bytes
+ *          so that the interrupt frame stays aligned.
+ */
+#define PORT_RISCV_IRQ_ARG_SIZE         16
+
+/**
+ * @brief   Offset of the handler address inside the argument area.
+ */
+#define PORT_RISCV_IRQ_ARG_HANDLER_OFF  4
+
+/**
+ * @brief   Offsets, in bytes, of the fields of the interrupt frame.
+ * @note    The layout is shared between the C structure and the assembler
+ *          macros, it must be kept in sync with @p port_extctx.
+ */
+#define PORT_RISCV_EXTCTX_RA_OFF        0
+#define PORT_RISCV_EXTCTX_TP_OFF        4
+#define PORT_RISCV_EXTCTX_T0_OFF        8
+#define PORT_RISCV_EXTCTX_T1_OFF        12
+#define PORT_RISCV_EXTCTX_T2_OFF        16
+#define PORT_RISCV_EXTCTX_A0_OFF        20
+#define PORT_RISCV_EXTCTX_A1_OFF        24
+#define PORT_RISCV_EXTCTX_A2_OFF        28
+#define PORT_RISCV_EXTCTX_A3_OFF        32
+#define PORT_RISCV_EXTCTX_A4_OFF        36
+#define PORT_RISCV_EXTCTX_A5_OFF        40
+#define PORT_RISCV_EXTCTX_MEPC_OFF      44
+#define PORT_RISCV_EXTCTX_MCAUSE_OFF    48
+#define PORT_RISCV_EXTCTX_MSTATUS_OFF   52
+#define PORT_RISCV_EXTCTX_A6_OFF        56
+#define PORT_RISCV_EXTCTX_A7_OFF        60
+#define PORT_RISCV_EXTCTX_T3_OFF        64
+#define PORT_RISCV_EXTCTX_T4_OFF        68
+#define PORT_RISCV_EXTCTX_T5_OFF        72
+#define PORT_RISCV_EXTCTX_T6_OFF        76
+
+/*===========================================================================*/
+/* Thread frame layout (struct port_intctx).                                 */
+/*===========================================================================*/
+
+/**
+ * @brief   Offsets, in bytes, of the fields of the thread frame.
+ * @note    The layout is shared between the C structure and the assembler
+ *          macros, it must be kept in sync with @p port_intctx.
+ */
+#define PORT_RISCV_INTCTX_RA_OFF        0
+#define PORT_RISCV_INTCTX_S0_OFF        4
+#define PORT_RISCV_INTCTX_S1_OFF        8
+#define PORT_RISCV_INTCTX_S2_OFF        12
+#define PORT_RISCV_INTCTX_S3_OFF        16
+#define PORT_RISCV_INTCTX_S4_OFF        20
+#define PORT_RISCV_INTCTX_S5_OFF        24
+#define PORT_RISCV_INTCTX_S6_OFF        28
+#define PORT_RISCV_INTCTX_S7_OFF        32
+#define PORT_RISCV_INTCTX_S8_OFF        36
+#define PORT_RISCV_INTCTX_S9_OFF        40
+#define PORT_RISCV_INTCTX_S10_OFF       44
+#define PORT_RISCV_INTCTX_S11_OFF       48
+
+/*===========================================================================*/
 /* Assembler support.                                                        */
 /*===========================================================================*/
 
@@ -188,20 +274,34 @@
 
 #if defined(_FROM_ASM_)
 
+/*
+ * Load/store helpers, the base register is always the stack pointer.
+ * The offset is an absolute expression, the frame offsets defined above
+ * are used to address the fields of the saved contexts.
+ */
 .macro LOAD reg, offset
-    lw      \reg, \offset
+    lw      \reg, \offset(sp)
 .endm
 
 .macro STORE reg, offset
-    sw      \reg, \offset
+    sw      \reg, \offset(sp)
 .endm
 
 .macro FLOAD reg, offset
-    flw     \reg, \offset
+    flw     \reg, \offset(sp)
 .endm
 
 .macro FSTORE reg, offset
-    fsw     \reg, \offset
+    fsw     \reg, \offset(sp)
+.endm
+
+/* Load/store with an explicit base register. */
+.macro LOAD_REG reg, offset, base
+    lw      \reg, \offset(\base)
+.endm
+
+.macro STORE_REG reg, offset, base
+    sw      \reg, \offset(\base)
 .endm
 
 #endif /* !defined(_FROM_ASM_) */
