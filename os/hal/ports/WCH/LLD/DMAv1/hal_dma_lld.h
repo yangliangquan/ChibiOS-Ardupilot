@@ -131,7 +131,14 @@
 #define CH32_DMA_CFGR_SIZE_MASK             (CH32_DMA_CFGR_PSIZE_MASK |      \
                                              CH32_DMA_CFGR_MSIZE_MASK)
 #define CH32_DMA_CFGR_PL_MASK               (3UL << 12)
-#define CH32_DMA_CFGR_PL(n)                 ((uint32_t)(n) << 12)
+/**
+ * @brief   Channel arbiter priority, CFGR.PL[13:12].
+ * @note    The field is two bits wide (RM 22.4.4). The drivers pass the
+ *          PFIC scaled IRQ priority here, only the two LSBs are used:
+ *          00 low, 01 medium, 10 high, 11 very high. Values larger than
+ *          three would corrupt the DBM bit (15) of this register.
+ */
+#define CH32_DMA_CFGR_PL(n)                 (((uint32_t)(n) & 3UL) << 12)
 #define CH32_DMA_CFGR_M2M                   (1UL << 14)
 #define CH32_DMA_CFGR_DBM                   (1UL << 15)
 #define CH32_DMA_CFGR_DBM_START             (1UL << 16)
