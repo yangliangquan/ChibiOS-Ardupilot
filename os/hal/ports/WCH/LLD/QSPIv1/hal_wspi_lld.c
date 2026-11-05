@@ -18,17 +18,10 @@
  * @file    QSPIv1/hal_wspi_lld.c
  * @brief   CH32H417 WSPI subsystem low level driver source.
  *
- * @details Indirect mode operations are started by the CCR/AR write
- *          sequence (RM 37.3.8) and completed from the unit interrupt:
- *          TCF finishes the frame, TEF/TOF report transfer errors.
- *
- *          The FIFO (SR.FLEVEL, 32 bytes) is not serviced from the FTF
- *          interrupt anymore: the general purpose DMA owns the DR
- *          register for the whole data phase, enabled through
- *          CH32_QSPI_DMAEN and paced by the FTF threshold level. The
- *          channel is armed before the frame is written and stopped
- *          from the TCF handler once its counter has reached zero, so
- *          the completion never races the last FIFO byte.
+ * @details Frames are staged in the CCR/AR/DLR registers and launched
+ *          with CR.START, the data phase is served by the DMA through
+ *          the DR register and the frame is completed from the unit
+ *          interrupt on TCF.
  *
  * @addtogroup WSPI
  * @{
@@ -46,6 +39,7 @@
 #define CH32_QSPI_EN                        QSPI_CR_EN
 #define CH32_QSPI_ABORT                     QSPI_CR_ABORT
 #define CH32_QSPI_DMAEN                     QSPI_CR_DMAEN
+#define CH32_QSPI_START                     QSPI_CR_START
 #define CH32_QSPI_FTHRES(n)                 ((uint32_t)(n) << 8)
 #define CH32_QSPI_TCIE                      QSPI_CR_TCIE
 #define CH32_QSPI_FTIE                      QSPI_CR_FTIE
@@ -73,6 +67,35 @@
 #define CH32_QSPI_IE_MASK   (CH32_QSPI_TCIE | CH32_QSPI_FTIE |           \
                              CH32_QSPI_TEIE)
 
+/* Iteration bound of the interrupt level drain wait. It only exists to
+   contain a stalled DMA channel instead of freezing the system from
+   the handler. */
+#define CH32_QSPI_DMA_DRAIN_GUARD           1000000U
+
+/* Iteration bound of the abort wait, the bit self-clears when the
+   transaction is torn down. */
+#define CH32_QSPI_ABORT_GUARD               1000000U
+
+/**
+ * @brief   Tears down a possibly half-written frame.
+ * @details ABORT stops an ongoing or pending transaction and clears
+ *          the FIFO, the bit self-clears when it is done (RM 37.4.1).
+ *          The frame flags are dropped afterwards, the abort can raise
+ *          some of them. The wait is bounded, the unit must be clocked.
+ *
+ * @notapi
+ */
+static void abort_frame(WSPIDriver *wspip) {
+  QSPI_TypeDef *q = wspip->qspi;
+  uint32_t guard = CH32_QSPI_ABORT_GUARD;
+
+  q->CR |= CH32_QSPI_ABORT;
+  while (((q->CR & CH32_QSPI_ABORT) != 0U) && (guard > 0U)) {
+    guard--;
+  }
+  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+}
+
 /*===========================================================================*/
 /* Driver exported variables.                                                */
 /*===========================================================================*/
@@ -92,9 +115,7 @@ WSPIDriver WSPID2 = { .qspi = QSPI2, .mapbase = CH32H417_QSPI2_MEMMAP_BASE };
 
 /**
  * @brief   Prepares the CCR/AR registers of a frame.
- * @note    Ordering per RM 37.3.8: CCR first, AR last (the AR write
- *          kicks the frame when an address phase exists; without an
- *          address the CCR write kicks command-only frames).
+ * @note    CCR first, AR last (RM 37.3.8).
  */
 static void load_frame(WSPIDriver *wspip, const wspi_command_t *cmdp,
                        uint32_t fmode) {
@@ -124,24 +145,40 @@ static void serve_interrupt(WSPIDriver *wspip) {
   uint32_t sr = q->SR;
 
   if ((sr & (CH32_QSPI_TEF | CH32_QSPI_TOF)) != 0U) {
-    /* Transfer error or timeout: stop the channel before reporting so
-       no request is left pending, clear the frame state and signal
-       failure through the portable macro.*/
-    q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTOF | CH32_QSPI_CTCF;
+    /* Transfer error or timeout: stop the channel and tear down the
+       frame, a frame left pending would poison the following ones.*/
     q->CR &= (uint32_t)~CH32_QSPI_IE_MASK;
     ch32DmaStreamDisable(wspip->dma);
+    abort_frame(wspip);
     _wspi_error_code(wspip);
     return;
   }
 
   if ((sr & CH32_QSPI_TCF) != 0U) {
     if ((wspip->state == WSPI_SEND) || (wspip->state == WSPI_RECEIVE)) {
-      /* TCF means the frame is over, not that the FIFO has been
-         drained: let the counter run out before shutting the channel
-         down, otherwise the last bytes are dropped.*/
-      while (wspip->dma->channel->CNTR > 0U) {
+      /* TCF does not mean that the FIFO is drained: let the channel
+         count out before stopping it, otherwise the last bytes are
+         dropped. The wait is bounded, a channel that never drains is
+         a failure and must not freeze the system at interrupt level.*/
+      uint32_t guard = CH32_QSPI_DMA_DRAIN_GUARD;
+
+      while ((wspip->dma->channel->CNTR > 0U) && (guard > 0U)) {
+        guard--;
       }
       ch32DmaStreamDisable(wspip->dma);
+      /* TCF tracks the FIFO counter, not the wire: in the TX direction
+         a FIFO of data can still be shifting out when it fires, and
+         DLR and CCR must not be written while BUSY=1 (RM 37.4). The
+         thread is resumed only once the unit is idle.*/
+      while (((q->SR & CH32_QSPI_BUSY) != 0U) && (guard > 0U)) {
+        guard--;
+      }
+      if (guard == 0U) {
+        q->CR &= (uint32_t)~CH32_QSPI_IE_MASK;
+        abort_frame(wspip);
+        _wspi_error_code(wspip);
+        return;
+      }
     }
     q->FCR = CH32_QSPI_CTCF;
     q->CR &= (uint32_t)~CH32_QSPI_IE_MASK;
@@ -257,12 +294,14 @@ void wspi_lld_start(WSPIDriver *wspip) {
        direction and the buffer change from transfer to transfer.*/
     ch32DmaStreamSetPeripheral(wspip->dma, &wspip->qspi->DR);
 
-    /* Disable a possibly running unit before reconfiguration. */
+    /* Release a pending frame before disabling the unit, CR=0 on a
+       busy transaction would leave the flash mid-command. */
+    abort_frame(wspip);
     q->CR = 0U;
   }
 
-  /* WSPI setup and enable: CR without EN, DCR, then EN (vendor model).
-     DMAEN gates the FIFO threshold requests for the whole data phase.*/
+  /* CR without EN, DCR, then EN. DMAEN gates the FIFO threshold
+     requests for the whole data phase.*/
   q->CR  = CH32_QSPI_PRESCALER(presc) |
            CH32_QSPI_FTHRES(CH32H417_QSPI_FTHRES) |
            CH32_QSPI_DMAEN;
@@ -279,6 +318,13 @@ void wspi_lld_start(WSPIDriver *wspip) {
 void wspi_lld_stop(WSPIDriver *wspip) {
 
   if (wspip->state == WSPI_READY) {
+    /* Release a pending frame while the unit is still clocked, gating
+       the clock on a busy transaction would leave the flash selected
+       mid-command.*/
+    wspip->qspi->CR |= CH32_QSPI_ABORT;
+    while ((wspip->qspi->CR & CH32_QSPI_ABORT) != 0U) {
+    }
+
     wspip->qspi->CR = 0U;
 
     /* Releasing the channel.*/
@@ -308,12 +354,15 @@ void wspi_lld_stop(WSPIDriver *wspip) {
 void wspi_lld_command(WSPIDriver *wspip, const wspi_command_t *cmdp) {
   QSPI_TypeDef *q = wspip->qspi;
 
-  /* No data phase: the channel stays out of the picture, DLR=0 tells
-     the unit not to expect any byte.*/
+  /* No data phase, the channel stays out of the picture. The length is
+     DLR+1 (RM 37.4.5), so a zero byte data phase is DLR=0xFFFFFFFF.
+     As the vendor firmware does, command frames run the indirect read
+     fifo mode, no byte is expected and the frame cannot underrun.*/
   q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
   q->CR |= CH32_QSPI_IE_MASK;
-  q->DLR = 0U;
-  load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
+  q->DLR = 0xFFFFFFFFUL;
+  load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_READ);
+  q->CR |= CH32_QSPI_START;
 }
 
 /**
@@ -324,6 +373,14 @@ void wspi_lld_command(WSPIDriver *wspip, const wspi_command_t *cmdp) {
 void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
                    size_t n, const uint8_t *txbuf) {
   QSPI_TypeDef *q = wspip->qspi;
+
+  /* Direction change flush: ABORT empties the FIFO and resets its
+     internal pointers (RM 37.4.1), which the unit expects whenever the
+     data direction changes. Skipping it makes the unit reject the
+     first write frame with a transfer error, although the data goes
+     out correctly. The unit is idle here and the interrupts are still
+     masked, so the abort cannot reach the handler.*/
+  abort_frame(wspip);
 
   /* Flags are cleared before the channel is armed so a leftover FTF
      from the previous frame cannot predate the new one.*/
@@ -337,11 +394,15 @@ void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
 
   q->CR |= CH32_QSPI_IE_MASK;
   q->DLR = (uint32_t)(n - 1U);
-  load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
 
-  /* With an address the AR write already started the frame, without one
-     the first DR write starts it - either way the empty FIFO holds FTF
-     now and the DMA takes over the data phase from here.*/
+  /* Staging order as in the vendor flash library: CCR, AR, DLR, START
+     and only then the data. The frame must be fully described before
+     a byte reaches the data register, a DR write is one of the events
+     that trigger the communication start (RM 37.3.8). The channel goes
+     live after the start, the unit holds the shift register while the
+     FIFO is empty (RM 37.3.3), so no byte is lost.*/
+  load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
+  q->CR |= CH32_QSPI_START;
   ch32DmaStreamEnable(wspip->dma);
 }
 
@@ -354,6 +415,9 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
                       size_t n, uint8_t *rxbuf) {
   QSPI_TypeDef *q = wspip->qspi;
 
+  /* Direction change flush, same reason as in the send path.*/
+  abort_frame(wspip);
+
   q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
 
   ch32DmaStreamSetMemory0(wspip->dma, rxbuf);
@@ -364,11 +428,13 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
 
   q->CR |= CH32_QSPI_IE_MASK;
   q->DLR = (uint32_t)(n - 1U);
-  load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_READ);
 
-  /* The frame starts on the CCR/AR write, bytes reach the FIFO at
-     FTHRES and are drained by the DMA until DLR is exhausted.*/
+  /* The channel is live before the frame starts, the first FIFO byte
+     must not cross a disabled channel. Each arrival at FTHRES raises a
+     request and the DMA drains the FIFO until DLR is exhausted.*/
   ch32DmaStreamEnable(wspip->dma);
+  load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_READ);
+  q->CR |= CH32_QSPI_START;
 }
 
 #if (WSPI_SUPPORTS_MEMMAP == TRUE) || defined(__DOXYGEN__)

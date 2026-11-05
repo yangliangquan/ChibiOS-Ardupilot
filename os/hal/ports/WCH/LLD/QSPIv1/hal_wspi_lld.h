@@ -18,25 +18,20 @@
  * @file    QSPIv1/hal_wspi_lld.h
  * @brief   CH32H417 WSPI subsystem low level driver header.
  *
- * @details WSPI on the CH32H417 QSPI blocks (QSPI1/QSPI2), indirect
- *          command/send/receive plus memory-mapped read mode.
+ * @details WSPI on the CH32H417 QSPI blocks (QSPI1/QSPI2): indirect
+ *          command, send and receive plus memory mapped read mode.
  *
  *          The data phase runs on the general purpose DMA, routed
  *          through the DMAMUX request inputs 71/72 (RM table 10-2) and
  *          paced by the unit CR.DMAEN (RM 37.4.1) at the FIFO threshold
- *          level: one dynamically allocated channel per QSPI unit owns
- *          the DR register. The command phase has no data and never
- *          touches the channel. The frame itself is completed from the
- *          QSPI interrupt (TCF), which then waits out and stops the
- *          channel. Contrary to SDMMC (Ch.33) this controller has no
- *          internal DMA.
+ *          level. One dynamically allocated channel per unit owns the
+ *          DR register, the command phase never touches it.
  *
- *          The transfer option masks (WSPI_CFG_*) are defined here in
- *          the WCH CCR register positions (RM 37.4.6):
- *          IMODE[9:8], ADMODE[11:10], ADSIZE[13:12], ABMODE[15:14],
- *          ABSIZE[17:16], DMODE[25:24], SIOO[28]; dummy cycles are
- *          carried in wspi_command_t::dummy (DCYC[22:18]).
- *          DTR/DQS are not implemented by this IP (SDR only).
+ *          The transfer option masks (WSPI_CFG_*) use the WCH CCR
+ *          register positions (RM 37.4.6): IMODE[9:8], ADMODE[11:10],
+ *          ADSIZE[13:12], ABMODE[15:14], ABSIZE[17:16], DMODE[25:24],
+ *          SIOO[28]; dummy cycles are carried in wspi_command_t::dummy
+ *          (DCYC[22:18]). This IP is SDR only, DTR/DQS are absent.
  *
  * @addtogroup WSPI
  * @{
@@ -160,9 +155,12 @@
 
 /**
  * @brief   FIFO threshold (SR.FTF trigger level, bytes).
+ * @note    The DMA request fires when FLEVEL is above this level, a
+ *          threshold of zero requests on every available byte and is
+ *          correct for any transfer length with byte wide DMA.
  */
 #if !defined(CH32H417_QSPI_FTHRES) || defined(__DOXYGEN__)
-#define CH32H417_QSPI_FTHRES                16U
+#define CH32H417_QSPI_FTHRES                0U
 #endif
 /** @} */
 
