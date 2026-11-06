@@ -26,6 +26,17 @@
  *          implemented. The SOF callback cannot fire (no device SOF
  *          flag) and usbGetFrameNumberX() returns zero.
  *
+ * @note    The endpoint data buffers are placed in the .ram2 section
+ *          (shared SRAM): the USBFS DMA engine only reaches the SRAM
+ *          bus (RM ch26 RB_DMA_EN) and truncates the DMA address to
+ *          the 2MB RAM window, so DTCM/ITCM placement generates bus
+ *          error NMIs on the first transfer.
+ *
+ * @note    A setup packet is delivered by the controller at the beginning
+ *          of the EP0 DMA buffer, the very same place where the data
+ *          stage of the control transfer is assembled: the setup packet
+ *          is copied out of that buffer before the data stage starts.
+ *
  * @addtogroup USB
  * @{
  */
@@ -59,11 +70,20 @@
 
 /**
  * @brief   48MHz clock divider (RCC_USBFS48ClockSourceDivConfig).
- * @note    USBHSPLL defaults (HSE 25MHz reference) target 48MHz, the
- *          divider stays at Div1.
+ * @note    The USBHS PLL runs at 480MHz, the USBFS entry needs 48MHz
+ *          so the divider stays at Div10 (vendor USBFS_RCC_Init()).
  */
 #if !defined(CH32H417_USBFS_CLK_DIV) || defined(__DOXYGEN__)
-#define CH32H417_USBFS_CLK_DIV             RCC_USBFS_Div1
+#define CH32H417_USBFS_CLK_DIV             RCC_USBFS_Div10
+#endif
+
+/**
+ * @brief   USBHS PLL reference frequency (RCC_USBHSPLLReferConfig).
+ * @note    The port assumes a 25MHz HSE, the USBHS PLL is programmed
+ *          for a 25MHz reference.
+ */
+#if !defined(CH32H417_USBHS_PLL_REFER) || defined(__DOXYGEN__)
+#define CH32H417_USBHS_PLL_REFER           RCC_USBHSPLLRefer_25M
 #endif
 
 /**
@@ -95,9 +115,14 @@
 
 /**
  * @brief   Maximum endpoint address.
- * @note    Endpoint groups 1..7 serve the aliased addresses 8..15.
+ * @note    The controller exposes eight endpoint groups (RM 26.2.2.2 to
+ *          RM 26.2.2.5), the endpoint addresses 8..15 are aliases of the
+ *          addresses 0..7 and share their buffer, so only the addresses
+ *          0..7 are usable as ChibiOS endpoint numbers. This value is
+ *          the number of endpoints excluding the endpoint zero, exactly
+ *          like the STM32 reference drivers.
  */
-#define USB_MAX_ENDPOINTS                   15
+#define USB_MAX_ENDPOINTS                   7
 
 /**
  * @brief   Status stage handling method.
