@@ -47,6 +47,11 @@ extern volatile float fcounter2;
 extern volatile uint32_t systime_snapshot;
 extern volatile uint32_t main_loops;
 extern volatile uint32_t dma_selftest_result;
+extern volatile uint32_t adc_conversions;
+extern volatile uint32_t adc_failures;
+extern volatile uint32_t can_tx_frames;
+extern volatile uint32_t can_rx_frames;
+extern volatile uint32_t can_failures;
 
 /*===========================================================================*/
 /* Module entry points.                                                       */
@@ -57,6 +62,8 @@ void fp_test_start(void);
 void console_test_start(void);
 void sdc_test_start(void);
 void wspi_test_start(void);
+void adc_test_start(void);
+void can_test_start(void);
 void dma_test_run(void);
 
 #endif /* PORTCHECK_H */

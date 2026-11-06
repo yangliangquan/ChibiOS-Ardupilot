@@ -36,11 +36,16 @@
  *          - test_sdc.c      : SDIO card read/write test every 5s
  *          - test_wspi.c     : QSPI2 flash erase/program/read validation
  *                              every 5s on the last 4KB scratch sector
+ *          - test_adc.c      : ADC1 internal reference and temperature
+ *                              sensor conversion every 1s
+ *          - test_can.c      : CAN1 internal loopback, a standard and an
+ *                              extended frame every 5s
  *
  *          Observation points of the debugger: counter1, counter2,
- *          fcounter1, fcounter2, systime_snapshot, main_loops and
- *          dma_selftest_result. The LED on PD11 blinks with a 500ms
- *          period (PAL).
+ *          fcounter1, fcounter2, systime_snapshot, main_loops,
+ *          dma_selftest_result, adc_conversions, adc_failures,
+ *          can_tx_frames, can_rx_frames and can_failures. The
+ *          LED on PD11 blinks with a 500ms period (PAL).
  *
  * @addtogroup RT
  * @{
@@ -92,7 +97,9 @@ int main(void) {
   counters_test_start();
   fp_test_start();
   // sdc_test_start();
-  wspi_test_start();
+  // wspi_test_start();
+  // adc_test_start();
+  can_test_start();
   // console_test_start();
 
   while (true) {
