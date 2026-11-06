@@ -41,6 +41,17 @@
 #define TRNG_SPIN_LIMIT                      2000000U
 
 /*===========================================================================*/
+/* Driver exported variables.                                                */
+/*===========================================================================*/
+
+#if (CH32H417_TRNG_USE_RNG == TRUE) && !defined(__DOXYGEN__)
+/**
+ * @brief   TRNG driver identifier.
+ */
+TRNGDriver TRNGD1;
+#endif
+
+/*===========================================================================*/
 /* Driver exported functions.                                                */
 /*===========================================================================*/
 
@@ -51,6 +62,7 @@
  */
 void trng_lld_init(void) {
 
+  trngObjectInit(&TRNGD1);
   RCC_HBPeriphClockCmd(RCC_HBPeriph_RNG, ENABLE);
 }
 

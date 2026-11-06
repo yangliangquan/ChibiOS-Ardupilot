@@ -61,9 +61,11 @@
 /*===========================================================================*/
 
 /**
- * @brief   Low level configuration fields (none).
+ * @brief   Low level configuration fields.
  */
-#define trng_lld_config_fields
+#define trng_lld_config_fields                                               \
+  /* Dummy configuration, it is not needed.*/                               \
+  uint32_t                  dummy;
 
 /**
  * @brief   Low level driver fields (none, singleton unit).
@@ -73,6 +75,10 @@
 /*===========================================================================*/
 /* External declarations.                                                    */
 /*===========================================================================*/
+
+#if (CH32H417_TRNG_USE_RNG == TRUE) && !defined(__DOXYGEN__)
+extern TRNGDriver TRNGD1;
+#endif
 
 #ifdef __cplusplus
 extern "C" {
