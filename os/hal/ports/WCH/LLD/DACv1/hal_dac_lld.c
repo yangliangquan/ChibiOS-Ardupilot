@@ -96,6 +96,10 @@ DACDriver DACD1 = {
  * @notapi
  */
 void dac_lld_init(void) {
+
+#if CH32H417_DAC_USE_DAC1 == TRUE
+  dacObjectInit(&DACD1);
+#endif
 }
 
 /**

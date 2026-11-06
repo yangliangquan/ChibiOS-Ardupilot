@@ -200,6 +200,10 @@ static cryerror_t ctr_common(CRYDriver *cryp, size_t size,
  * @notapi
  */
 void cry_lld_init(void) {
+
+#if CH32H417_CRY_USE_ECDC == TRUE
+  cryObjectInit(&CRYD1);
+#endif
 }
 
 /**

@@ -112,6 +112,13 @@ static void adc_lld_serve_interrupt(ADCDriver *adcp, uint32_t flags) {
  * @notapi
  */
 void adc_lld_init(void) {
+
+#if CH32H417_ADC_USE_ADC1 == TRUE
+  adcObjectInit(&ADCD1);
+#endif
+#if CH32H417_ADC_USE_ADC2 == TRUE
+  adcObjectInit(&ADCD2);
+#endif
 }
 
 /**

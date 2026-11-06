@@ -196,6 +196,19 @@ static msg_t dma_setup(I2CDriver *i2cp) {
  * @notapi
  */
 void i2c_lld_init(void) {
+
+#if CH32H417_I2C_USE_I2C1 == TRUE
+  i2cObjectInit(&I2CD1);
+#endif
+#if CH32H417_I2C_USE_I2C2 == TRUE
+  i2cObjectInit(&I2CD2);
+#endif
+#if CH32H417_I2C_USE_I2C3 == TRUE
+  i2cObjectInit(&I2CD3);
+#endif
+#if CH32H417_I2C_USE_I2C4 == TRUE
+  i2cObjectInit(&I2CD4);
+#endif
 }
 
 /**

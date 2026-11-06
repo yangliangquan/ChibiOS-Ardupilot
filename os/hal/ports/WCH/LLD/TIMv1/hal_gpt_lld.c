@@ -232,6 +232,43 @@ static void unit_disable(TIM_TypeDef *t) {
  * @notapi
  */
 void gpt_lld_init(void) {
+
+#if CH32H417_GPT_USE_TIM1 == TRUE
+  gptObjectInit(&GPTD1);
+#endif
+#if CH32H417_GPT_USE_TIM2 == TRUE
+  gptObjectInit(&GPTD2);
+#endif
+#if CH32H417_GPT_USE_TIM3 == TRUE
+  gptObjectInit(&GPTD3);
+#endif
+#if CH32H417_GPT_USE_TIM4 == TRUE
+  gptObjectInit(&GPTD4);
+#endif
+#if CH32H417_GPT_USE_TIM5 == TRUE
+  gptObjectInit(&GPTD5);
+#endif
+#if CH32H417_GPT_USE_TIM6 == TRUE
+  gptObjectInit(&GPTD6);
+#endif
+#if CH32H417_GPT_USE_TIM7 == TRUE
+  gptObjectInit(&GPTD7);
+#endif
+#if CH32H417_GPT_USE_TIM8 == TRUE
+  gptObjectInit(&GPTD8);
+#endif
+#if CH32H417_GPT_USE_TIM9 == TRUE
+  gptObjectInit(&GPTD9);
+#endif
+#if CH32H417_GPT_USE_TIM10 == TRUE
+  gptObjectInit(&GPTD10);
+#endif
+#if CH32H417_GPT_USE_TIM11 == TRUE
+  gptObjectInit(&GPTD11);
+#endif
+#if CH32H417_GPT_USE_TIM12 == TRUE
+  gptObjectInit(&GPTD12);
+#endif
 }
 
 /**

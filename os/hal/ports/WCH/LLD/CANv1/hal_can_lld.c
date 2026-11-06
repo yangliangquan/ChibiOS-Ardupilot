@@ -138,6 +138,16 @@ static void unit_disable(CAN_TypeDef *c) {
  * @notapi
  */
 void can_lld_init(void) {
+
+#if CH32H417_CAN_USE_CAN1 == TRUE
+  canObjectInit(&CAND1);
+#endif
+#if CH32H417_CAN_USE_CAN2 == TRUE
+  canObjectInit(&CAND2);
+#endif
+#if CH32H417_CAN_USE_CAN3 == TRUE
+  canObjectInit(&CAND3);
+#endif
 }
 
 /**
@@ -222,8 +232,10 @@ void can_lld_transmit(CANDriver *canp,
 
   msg.StdId = ctfp->SID;
   msg.ExtId = ctfp->EID;
-  msg.IDE = ctfp->IDE;
-  msg.RTR = ctfp->RTR;
+  /* The vendor structure expects the register bit values, the frame
+     structure carries plain boolean flags. */
+  msg.IDE = ctfp->IDE ? CAN_Id_Extended : CAN_Id_Standard;
+  msg.RTR = ctfp->RTR ? CAN_RTR_Remote : CAN_RTR_Data;
   msg.DLC = ctfp->DLC;
   memcpy(msg.Data, ctfp->data8, 8U);
 
@@ -277,8 +289,10 @@ void can_lld_receive(CANDriver *canp,
   crfp->FMI = 0U;
   crfp->TIME = 0U;
   crfp->DLC = msg.DLC;
-  crfp->RTR = msg.RTR;
-  crfp->IDE = msg.IDE;
+  /* The vendor returns the register bit values, the frame structure
+     expects plain boolean flags. */
+  crfp->RTR = (msg.RTR == CAN_RTR_Remote) ? 1U : 0U;
+  crfp->IDE = (msg.IDE == CAN_Id_Extended) ? 1U : 0U;
   if (msg.IDE == CAN_Id_Extended) {
     crfp->EID = msg.ExtId;
   }

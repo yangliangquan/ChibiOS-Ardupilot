@@ -199,6 +199,37 @@ static void unit_disable(TIM_TypeDef *t) {
  * @notapi
  */
 void icu_lld_init(void) {
+
+#if CH32H417_ICU_USE_TIM1 == TRUE
+  icuObjectInit(&ICUD1);
+#endif
+#if CH32H417_ICU_USE_TIM2 == TRUE
+  icuObjectInit(&ICUD2);
+#endif
+#if CH32H417_ICU_USE_TIM3 == TRUE
+  icuObjectInit(&ICUD3);
+#endif
+#if CH32H417_ICU_USE_TIM4 == TRUE
+  icuObjectInit(&ICUD4);
+#endif
+#if CH32H417_ICU_USE_TIM5 == TRUE
+  icuObjectInit(&ICUD5);
+#endif
+#if CH32H417_ICU_USE_TIM8 == TRUE
+  icuObjectInit(&ICUD8);
+#endif
+#if CH32H417_ICU_USE_TIM9 == TRUE
+  icuObjectInit(&ICUD9);
+#endif
+#if CH32H417_ICU_USE_TIM10 == TRUE
+  icuObjectInit(&ICUD10);
+#endif
+#if CH32H417_ICU_USE_TIM11 == TRUE
+  icuObjectInit(&ICUD11);
+#endif
+#if CH32H417_ICU_USE_TIM12 == TRUE
+  icuObjectInit(&ICUD12);
+#endif
 }
 
 /**
