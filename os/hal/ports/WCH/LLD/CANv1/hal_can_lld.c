@@ -36,21 +36,26 @@
 /* Driver local definitions.                                                 */
 /*===========================================================================*/
 
-/* TSTATR (TX status) bits, F1-compatible layout. */
-#define CH32_CAN_RQCP(i)                    (1UL << ((i) * 4))
-#define CH32_CAN_TME(i)                     (1UL << (1 + ((i) * 4)))
-#define CH32_CAN_ALST(i)                    (1UL << (2 + ((i) * 4)))
-#define CH32_CAN_TEST(i)                    (1UL << (3 + ((i) * 4)))
+/* TSTATR (TX status) bits, RM 28.7.3: one byte per mailbox, RQCP/TXOK/
+   ALST/TERR at bits 0..3 of each group, ABRQ at bit 7, the TME flags
+   are a separate field at bits 26..28. */
+#define CH32_CAN_RQCP(i)                    (1UL << ((i) * 8))
+#define CH32_CAN_TXOK(i)                    (1UL << (1 + ((i) * 8)))
+#define CH32_CAN_ALST(i)                    (1UL << (2 + ((i) * 8)))
+#define CH32_CAN_TERR(i)                    (1UL << (3 + ((i) * 8)))
+#define CH32_CAN_TME(i)                     (1UL << (26 + (i)))
 
-/* RFIFO0/1 bits. */
-#define CH32_CAN_FMP_MASK                   0x0000000FUL
-#define CH32_CAN_FOVR                       (1UL << 6)
+/* RFIFO0/1 bits, RM 28.7.4/28.7.5: FMP is two bits wide, the FIFO is
+   three messages deep, FULL and FOVR are below RFOM. */
+#define CH32_CAN_FMP_MASK                   0x00000003UL
+#define CH32_CAN_FOVR                       (1UL << 4)
+#define CH32_CAN_RFOM                       (1UL << 5)
 
-/* ERRSR bits (error status). */
-#define CH32_CAN_ERRSR_LEC_MASK             0x00000007UL
-#define CH32_CAN_ERRSR_EWGF                 (1UL << 4)
-#define CH32_CAN_ERRSR_EPVF                 (1UL << 5)
-#define CH32_CAN_ERRSR_BOFF                 (1UL << 6)
+/* ERRSR bits (error status), RM 28.7.7. */
+#define CH32_CAN_ERRSR_LEC_MASK             0x00000070UL
+#define CH32_CAN_ERRSR_EWGF                 (1UL << 0)
+#define CH32_CAN_ERRSR_EPVF                 (1UL << 1)
+#define CH32_CAN_ERRSR_BOFF                 (1UL << 2)
 
 /*===========================================================================*/
 /* Driver exported variables.                                                */
