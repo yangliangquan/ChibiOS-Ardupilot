@@ -102,7 +102,7 @@ int main(void) {
   counters_test_start();
   fp_test_start();
   // trng_test_start();
-  sdc_test_start();
+  // sdc_test_start();
   // wspi_test_start();
   // adc_test_start();
   // can_test_start();

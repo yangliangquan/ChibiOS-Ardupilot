@@ -55,9 +55,9 @@ static uint8_t sdc_rbuf[SDC_TEST_BLOCK_SIZE] __attribute__((aligned(4)));
 /*===========================================================================*/
 
 /*
- * SDIO pin mapping of the card slot:
+ * SDIO pin mapping of the card slot (CH32H417 datasheet, SDIO pin table):
  *   CK = PB11, CMD = PB10, D0 = PE8, D1 = PE9, D2 = PB3, D3 = PB4.
- * PB10/PB11/PE8/PE9 use AF8, PB3/PB4 use AF9.
+ * PB11/PB10/PE8/PE9 use AF8, PB3/PB4 use AF9.
  */
 static void sdc_pins_init(void) {
 
@@ -96,14 +96,14 @@ static THD_FUNCTION(sdc_test_thd, arg) {
     attempt++;
 
     chprintf(chp, "SDC: attempt %u, connecting...\r\n", (unsigned)attempt);
-    if (!sdcConnect(&SDCD1)) {
+    if (sdcConnect(&SDCD1) != HAL_SUCCESS) {
       chprintf(chp, "SDC: connect FAILED (errors=0x%08x)\r\n",
                (unsigned)SDCD1.errors);
       chThdSleepMilliseconds(SDC_TEST_RETRY_MS);
       continue;
     }
 
-    if (!sdcGetInfo(&SDCD1, &bdi)) {
+    if (sdcGetInfo(&SDCD1, &bdi) != HAL_SUCCESS) {
       chprintf(chp, "SDC: get info FAILED\r\n");
       (void)sdcDisconnect(&SDCD1);
       chThdSleepMilliseconds(SDC_TEST_RETRY_MS);
@@ -115,7 +115,7 @@ static THD_FUNCTION(sdc_test_thd, arg) {
              (unsigned)(bdi.blk_num / 2048U));
 
     /* Block 0 read, this also validates the single block read path. */
-    if (!sdcRead(&SDCD1, 0U, sdc_rbuf, 1U)) {
+    if (sdcRead(&SDCD1, 0U, sdc_rbuf, 1U) != HAL_SUCCESS) {
       chprintf(chp, "SDC: read block 0 FAILED (errors=0x%08x)\r\n",
                (unsigned)sdcGetAndClearErrors(&SDCD1));
       (void)sdcDisconnect(&SDCD1);
@@ -129,9 +129,9 @@ static THD_FUNCTION(sdc_test_thd, arg) {
       sdc_wbuf[i] = (uint8_t)((i * 7U) ^ (blk & 0xFFU) ^ attempt);
     }
 
-    ok = sdcWrite(&SDCD1, blk, sdc_wbuf, 1U);
+    ok = (sdcWrite(&SDCD1, blk, sdc_wbuf, 1U) == HAL_SUCCESS);
     if (ok) {
-      ok = sdcRead(&SDCD1, blk, sdc_rbuf, 1U);
+      ok = (sdcRead(&SDCD1, blk, sdc_rbuf, 1U) == HAL_SUCCESS);
     }
     if (ok) {
       ok = (memcmp(sdc_wbuf, sdc_rbuf, SDC_TEST_BLOCK_SIZE) == 0);
