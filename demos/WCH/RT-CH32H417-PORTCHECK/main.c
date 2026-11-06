@@ -41,12 +41,15 @@
  *          - test_can.c      : CAN1 internal loopback, a standard and an
  *                              extended frame every 5s
  *          - test_trng.c     : hardware random generator check every 2s
+ *          - test_usbfs.c    : USBFS CDC virtual COM port, a counter line
+ *                              every 2s and repeated packets on the host
  *
  *          Observation points of the debugger: counter1, counter2,
  *          fcounter1, fcounter2, systime_snapshot, main_loops,
  *          dma_selftest_result, adc_conversions, adc_failures,
- *          can_tx_frames, can_rx_frames, can_failures, trng_generations
- *          and trng_failures. The LED on PD11 blinks with a 500ms period
+ *          can_tx_frames, can_rx_frames, can_failures, trng_generations,
+ *          trng_failures, usb_events, usb_tx_frames, usb_rx_frames
+ *          and usb_ctl_flags. The LED on PD11 blinks with a 500ms period
  *          (PAL).
  *
  * @addtogroup RT
@@ -99,10 +102,11 @@ int main(void) {
   counters_test_start();
   fp_test_start();
   // trng_test_start();
-  // sdc_test_start();
+  sdc_test_start();
   // wspi_test_start();
   // adc_test_start();
-  can_test_start();
+  // can_test_start();
+  // usbfs_test_start();
   // console_test_start();
 
   while (true) {

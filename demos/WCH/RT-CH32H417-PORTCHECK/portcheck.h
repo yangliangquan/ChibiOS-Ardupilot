@@ -52,6 +52,10 @@ extern volatile uint32_t adc_failures;
 extern volatile uint32_t can_tx_frames;
 extern volatile uint32_t can_rx_frames;
 extern volatile uint32_t can_failures;
+extern volatile uint32_t usb_events;
+extern volatile uint32_t usb_tx_frames;
+extern volatile uint32_t usb_rx_frames;
+extern volatile uint32_t usb_ctl_flags;
 extern volatile uint32_t trng_generations;
 extern volatile uint32_t trng_failures;
 
@@ -67,6 +71,7 @@ void wspi_test_start(void);
 void adc_test_start(void);
 void can_test_start(void);
 void trng_test_start(void);
+void usbfs_test_start(void);
 void dma_test_run(void);
 
 #endif /* PORTCHECK_H */
