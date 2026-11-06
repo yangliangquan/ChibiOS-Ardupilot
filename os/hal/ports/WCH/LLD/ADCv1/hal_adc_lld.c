@@ -39,6 +39,18 @@
 
 #define ADC_BOUNDED_LOOPS           0x10000U
 
+/* CTLR2 bits owned by the application, the vendor ADC_Init() drops them
+   with its clear mask. TSVREFE connects the temperature sensor and the
+   internal reference (RM 11.3.2). */
+#define CH32_ADC_CTLR2_ADON              0x00000001UL
+#define CH32_ADC_CTLR2_TSVREFE           0x00800000UL
+
+/* CTLR1 bits the vendor ADC_Init() does not clear, it only ORs the
+   configuration into the register. The dual mode field is one of them,
+   a leftover value selects a synchronized conversion and the regular
+   group is then not converted at all (RM 11.3.2). */
+#define CH32_ADC_CTLR1_CLEAR_MASK         0x0FFF0000UL
+
 /*===========================================================================*/
 /* Driver exported variables.                                                */
 /*===========================================================================*/
@@ -139,9 +151,15 @@ void adc_lld_start(ADCDriver *adcp) {
                                CH32H417_ADC_PRESCALER);
 
   /* Default configuration, calibration with a bounded wait so that a
-     clock tree problem cannot lock up halInit(). */
+     clock tree problem cannot lock up halInit(). The structure is filled
+     completely, the vendor ADC_StructInit() leaves the output buffer and
+     the PGA fields uninitialized and their value would reach the
+     control register.*/
   ADC_DeInit(adcp->adc);
   ADC_StructInit(&init);
+  init.ADC_OutputBuffer = ADC_OutputBuffer_Disable;
+  init.ADC_Pga = ADC_Pga_1;
+  adcp->adc->CTLR1 &= ~CH32_ADC_CTLR1_CLEAR_MASK;
   ADC_Init(adcp->adc, &init);
   ADC_Cmd(adcp->adc, ENABLE);
 
@@ -222,6 +240,7 @@ void adc_lld_start_conversion(ADCDriver *adcp) {
   ADC_InitTypeDef init;
   uint32_t mode;
   uint32_t total;
+  uint32_t ctlr2;
   unsigned i;
 
   /* No channel could be allocated at start, the conversion cannot run.*/
@@ -249,7 +268,17 @@ void adc_lld_start_conversion(ADCDriver *adcp) {
   init.ADC_ExternalTrigConv = ADC_ExternalTrigConv_None;
   init.ADC_DataAlign = ADC_DataAlign_Right;
   init.ADC_NbrOfChannel = (uint8_t)grpp->num_channels;
+  init.ADC_OutputBuffer = ADC_OutputBuffer_Disable;
+  init.ADC_Pga = ADC_Pga_1;
+
+  /* The vendor ADC_Init() rewrites CTLR2 through a clear mask that also
+     drops the bits owned by the application, they have to survive the
+     sequence reconfiguration. CTLR1 is cleared of the fields the vendor
+     function does not touch, a stale mode or gain would survive it.*/
+  ctlr2 = adcp->adc->CTLR2 & (CH32_ADC_CTLR2_ADON | CH32_ADC_CTLR2_TSVREFE);
+  adcp->adc->CTLR1 &= ~CH32_ADC_CTLR1_CLEAR_MASK;
   ADC_Init(adcp->adc, &init);
+  adcp->adc->CTLR2 |= ctlr2;
 
   /* DMA setup, one halfword per sample.*/
   total = (uint32_t)grpp->num_channels * (uint32_t)adcp->depth;
