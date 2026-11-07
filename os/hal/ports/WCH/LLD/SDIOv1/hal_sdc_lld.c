@@ -787,7 +787,8 @@ void sdc_lld_set_data_clk(SDCDriver *sdcp, sdcbusclk_t clk) {
 #if (CH32H417_SDC_USE_SDIO == TRUE)
   uint32_t keep = sdcp->sdio->CLKCR &
                   (CH32_SDIO_CLKCR_WIDBUS_0 | CH32_SDIO_CLKCR_WIDBUS_1 |
-                   CH32_SDIO_CLKCR_HWFC_EN);
+                   CH32_SDIO_CLKCR_HWFC_EN | CH32_SDIO_CLKCR_CLKEN |
+                   CH32_SDIO_CLKCR_NEGEDGE);
   uint32_t clkcr = sdc_lld_clkcr(sdcp, f);
 
 #if CH32H417_SDC_PWRSAV

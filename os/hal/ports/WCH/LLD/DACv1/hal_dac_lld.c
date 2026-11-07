@@ -197,11 +197,14 @@ msg_t dac_lld_start_conversion(DACDriver *dacp) {
     return HAL_RET_NO_RESOURCE;
   }
 
-  /* Automatic conversion on data register write is what lets the DMA pace
-     the output, the software trigger used by dacPutChannelX() is replaced
-     here and restored in dac_lld_stop_conversion().*/
+  /* The conversions are paced by the trigger selected in the conversion
+     group. A hardware trigger is mandatory for the buffered output: the
+     DAC issues a DMA request on each trigger event only, with
+     DAC_Trigger_None no request is generated and the DMA stays idle. The
+     software trigger used by dacPutChannelX() is replaced here and
+     restored in dac_lld_stop_conversion().*/
   DAC_StructInit(&init);
-  init.DAC_Trigger = DAC_Trigger_None;
+  init.DAC_Trigger = grpp->trigger;
   init.DAC_WaveGeneration = DAC_WaveGeneration_None;
   init.DAC_OutputBuffer = DAC_OutputBuffer_Enable;
   DAC_Init(DAC_Channel_1, &init);
@@ -224,11 +227,14 @@ msg_t dac_lld_start_conversion(DACDriver *dacp) {
     ch32DmaStreamSetRequest(dacp->dma, CH32_DMAMUX_DAC2);
   }
 
-  /* DMA setup, one halfword per sample. DAC conversions are always
-     circular, the half transfer interrupt is used for streaming.*/
-  total = (uint32_t)grpp->num_channels * (uint32_t)dacp->depth;
+  /* DMA setup: the dual register takes one 32-bit word per group, both
+     channels packed, the single channel registers one halfword per
+     sample. DAC conversions are always circular, the half transfer
+     interrupt is used for streaming.*/
+  total = (uint32_t)dacp->depth;
   mode = CH32_DMA_CFGR_DIR_M2P | CH32_DMA_CFGR_MINC |
-         CH32_DMA_CFGR_PSIZE_HWORD | CH32_DMA_CFGR_MSIZE_HWORD |
+         (dual ? (CH32_DMA_CFGR_PSIZE_WORD | CH32_DMA_CFGR_MSIZE_WORD)
+               : (CH32_DMA_CFGR_PSIZE_HWORD | CH32_DMA_CFGR_MSIZE_HWORD)) |
          CH32_DMA_CFGR_CIRC | CH32_DMA_CFGR_TCIE | CH32_DMA_CFGR_TEIE;
   if (dacp->depth > 1U) {
     mode |= CH32_DMA_CFGR_HTIE;
@@ -240,10 +246,10 @@ msg_t dac_lld_start_conversion(DACDriver *dacp) {
   ch32DmaStreamSetMode(dacp->dma, mode);
   ch32DmaStreamClearInterrupt(dacp->dma);
 
+  /* One request per trigger event: the dual data register write updates
+     both channels at once, so only channel 1 has to request the DMA, a
+     second request would consume the buffer at twice the trigger rate.*/
   DAC_DMACmd(DAC_Channel_1, ENABLE);
-  if (dual) {
-    DAC_DMACmd(DAC_Channel_2, ENABLE);
-  }
 
   ch32DmaStreamEnable(dacp->dma);
 

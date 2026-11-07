@@ -21,7 +21,8 @@
  * @details One DAC unit with two channels (DAC1_OUT1/OUT2),
  *          F1-compatible register model. Single-value output via
  *          dacPutChannelX() is supported; buffered conversions
- *          require DMA and are not available yet.
+ *          require DMA and a hardware trigger, the trigger source
+ *          is selected in the conversion group.
  *
  * @addtogroup DAC
  * @{
@@ -120,7 +121,12 @@ typedef uint32_t dacerror_t;
  */
 #define dac_lld_conversion_group_fields                                     \
   /* Channel list, 0 and/or 1, num_channels entries.*/                      \
-  const dacchannel_t        *channels;
+  const dacchannel_t        *channels;                                      \
+  /* Trigger source, one of the DAC_Trigger_* values of the vendor header,  \
+     DAC_Trigger_None disables the trigger. A hardware trigger is mandatory \
+     for buffered conversions, the DAC issues a DMA request on each trigger \
+     event only.*/                                                          \
+  uint32_t                  trigger;
 
 /**
  * @brief   Low level driver fields.
