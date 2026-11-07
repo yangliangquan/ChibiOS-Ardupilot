@@ -58,6 +58,12 @@ extern volatile uint32_t usb_rx_frames;
 extern volatile uint32_t usb_ctl_flags;
 extern volatile uint32_t trng_generations;
 extern volatile uint32_t trng_failures;
+extern volatile uint32_t dac_samples;
+extern volatile uint32_t dac_failures;
+extern volatile uint32_t dac_sine_cycles;
+extern volatile uint16_t dac_last_ch1;
+extern volatile uint16_t dac_last_ch2;
+extern volatile uint32_t dac_last_mv;
 
 /*===========================================================================*/
 /* Module entry points.                                                       */
@@ -72,6 +78,7 @@ void adc_test_start(void);
 void can_test_start(void);
 void trng_test_start(void);
 void usbfs_test_start(void);
+void dac_test_start(void);
 void dma_test_run(void);
 
 #endif /* PORTCHECK_H */
