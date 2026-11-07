@@ -328,6 +328,11 @@ void pwm_lld_start(PWMDriver *pwmp) {
 
   /* Advanced timer main output enable. */
   timp->BDTR |= (uint16_t)CH32_TIM_MOE;
+
+  /* Counter start, the outputs are gated by the CCxE bits of CCER until a
+     channel is enabled. Without it the timer never counts, no compare
+     event is ever generated and the periodic notification cannot fire. */
+  timp->CTLR1 |= (uint16_t)CH32_TIM_CEN;
 }
 
 /**
