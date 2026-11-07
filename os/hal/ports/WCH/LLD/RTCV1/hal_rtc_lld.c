@@ -256,10 +256,12 @@ void rtc_lld_init(void) {
   CH32H417_DSB();
   RTC_ExitConfigMode();
   CH32H417_DSB();
+  rtc_wait_last_task();
 
   /* All interrupts initially disabled.*/
   RTC_ITConfig(RTC_IT_OW | RTC_IT_ALR | RTC_IT_SEC, DISABLE);
   CH32H417_DSB();
+  rtc_wait_last_task();
 
   /* Callback initially disabled.*/
   RTCD1.callback = NULL;
@@ -279,10 +281,13 @@ void rtc_lld_set_time(RTCDriver *rtcp, const RTCDateTime *timespec) {
   time_t tv_sec = rtc_encode(timespec);
 
   (void)rtcp;
-  RTC_WaitForLastTask();
+  rtc_wait_last_task();
   RTC_EnterConfigMode();
   RTC_SetCounter((uint32_t)tv_sec);
   RTC_ExitConfigMode();
+  /* The counter write is only committed when the last task completes,
+     without this wait an immediate read back returns the old value. */
+  rtc_wait_last_task();
 }
 
 /**
@@ -309,7 +314,7 @@ void rtc_lld_set_alarm(RTCDriver *rtcp,
   (void)rtcp;
   (void)alarm_number;
 
-  RTC_WaitForLastTask();
+  rtc_wait_last_task();
   RTC_EnterConfigMode();
   if (alarmspec != NULL) {
     RTC_SetAlarm(alarmspec->tv_sec);
@@ -318,6 +323,7 @@ void rtc_lld_set_alarm(RTCDriver *rtcp,
     RTC_SetAlarm(0U);
   }
   RTC_ExitConfigMode();
+  rtc_wait_last_task();
 }
 
 /**
@@ -346,13 +352,19 @@ void rtc_lld_set_callback(RTCDriver *rtcp, rtccb_t callback) {
     /* IRQ sources enabled only after setting up the callback.*/
     rtcp->callback = callback;
 
-    RTC_ClearFlag(RTC_FLAG_OW);
-    RTC_ClearFlag(RTC_FLAG_ALR);
-    RTC_ClearFlag(RTC_FLAG_SEC);
+    /* Every write needs the previous one to be committed or it is
+       silently dropped by the RTC APB interface. The three flags are
+       cleared with a single register write for the same reason. */
+    rtc_wait_last_task();
+    RTC->CTLRL &= (uint16_t)~(RTC_FLAG_OW | RTC_FLAG_ALR | RTC_FLAG_SEC);
+    rtc_wait_last_task();
     RTC_ITConfig(RTC_IT_OW | RTC_IT_ALR | RTC_IT_SEC, ENABLE);
+    rtc_wait_last_task();
   }
   else {
+    rtc_wait_last_task();
     RTC_ITConfig(RTC_IT_OW | RTC_IT_ALR | RTC_IT_SEC, DISABLE);
+    rtc_wait_last_task();
 
     /* Callback set to NULL only after disabling the IRQ sources.*/
     rtcp->callback = NULL;
