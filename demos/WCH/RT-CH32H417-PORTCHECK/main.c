@@ -48,6 +48,15 @@
  *          - test_pwm.c      : PWM duty cycle sweep on TIM1 (PE11, PE13) and
  *                              TIM4 (PD12, PD13), the frequency measured by
  *                              the periodic notification
+ *          - test_icu.c      : input capture on TIM3 channel 1 (PA6), the
+ *                              period and width of the PA8 jumper input are
+ *                              checked every second
+ *          - test_rtc.c      : set/read back the date/time, rate of the
+ *                              seconds counter and the alarm callback
+ *          - test_spi.c      : SPI4 master loopback on the PE6/PE5 jumper,
+ *                              8 and 16 bit frames in all SPI modes
+ *          - test_ecdc.c     : ECDC AES engine against the FIPS-197 ECB
+ *                              vectors and a NIST SP 800-38A CTR vector
  *
  *          Observation points of the debugger: counter1, counter2,
  *          fcounter1, fcounter2, systime_snapshot, main_loops,
@@ -56,8 +65,13 @@
  *          trng_failures, usb_events, usb_tx_frames, usb_rx_frames,
  *          usb_ctl_flags, dac_samples, dac_failures, dac_sine_cycles,
  *          dac_last_ch1, dac_last_ch2, dac_last_mv, pwm_periods,
- *          pwm_steps, pwm_failures, pwm_duty and pwm_frequency. The LED
- *          on PD11 blinks with a 500ms period (PAL).
+ *          pwm_steps, pwm_failures, pwm_duty, pwm_frequency,
+ *          icu_captures, icu_failures, icu_rounds, icu_period, icu_width,
+ *          rtc_seconds, rtc_alarms, rtc_overflows, rtc_checks,
+ *          rtc_failures, rtc_last_epoch, rtc_rate_mhz, spi_transfers,
+ *          spi_failures, spi_rounds, spi_last_error, cry_blocks,
+ *          cry_failures, cry_rounds and cry_last_error. The LED on PD11
+ *          blinks with a 500ms period (PAL).
  *
  * @addtogroup RT
  * @{
@@ -109,15 +123,18 @@ int main(void) {
   counters_test_start();
   fp_test_start();
   // trng_test_start();
-  sdc_test_start();
+  // sdc_test_start();
   // wspi_test_start();
   // adc_test_start();
   // can_test_start();
-  usbfs_test_start();
-  dac_test_start();
-  pwm_test_start();
+  // usbfs_test_start();
+  // dac_test_start();
+  // pwm_test_start();
+  // icu_test_start();
+  // rtc_test_start();
+  // spi_test_start();
+  ecdc_test_start();
   // console_test_start();
-
   while (true) {
     LED_TOGGLE();
     // systime_snapshot = chVTGetSystemTime();

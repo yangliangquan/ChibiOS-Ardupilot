@@ -69,6 +69,26 @@ extern volatile uint32_t pwm_steps;
 extern volatile uint32_t pwm_failures;
 extern volatile uint32_t pwm_duty;
 extern volatile uint32_t pwm_frequency;
+extern volatile uint32_t icu_captures;
+extern volatile uint32_t icu_failures;
+extern volatile uint32_t icu_rounds;
+extern volatile uint16_t icu_period;
+extern volatile uint16_t icu_width;
+extern volatile uint32_t rtc_seconds;
+extern volatile uint32_t rtc_alarms;
+extern volatile uint32_t rtc_overflows;
+extern volatile uint32_t rtc_checks;
+extern volatile uint32_t rtc_failures;
+extern volatile uint32_t rtc_last_epoch;
+extern volatile uint32_t rtc_rate_mhz;
+extern volatile uint32_t spi_transfers;
+extern volatile uint32_t spi_failures;
+extern volatile uint32_t spi_rounds;
+extern volatile uint32_t spi_last_error;
+extern volatile uint32_t cry_blocks;
+extern volatile uint32_t cry_failures;
+extern volatile uint32_t cry_rounds;
+extern volatile uint32_t cry_last_error;
 
 /*===========================================================================*/
 /* Module entry points.                                                       */
@@ -85,6 +105,10 @@ void trng_test_start(void);
 void usbfs_test_start(void);
 void dac_test_start(void);
 void pwm_test_start(void);
+void icu_test_start(void);
+void rtc_test_start(void);
+void spi_test_start(void);
+void ecdc_test_start(void);
 void dma_test_run(void);
 
 #endif /* PORTCHECK_H */
