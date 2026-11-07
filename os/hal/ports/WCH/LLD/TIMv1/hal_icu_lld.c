@@ -243,7 +243,6 @@ void icu_lld_start(ICUDriver *icup) {
   TIM_TypeDef *t = icup->tim;
   uint32_t pclk = CH32H417_TIMCLK1;
   uint32_t freq = icup->config->frequency;
-  uint16_t ccmr;
 
   osalDbgAssert(freq > 0U, "zero frequency");
   osalDbgAssert((pclk % freq) == 0U, "clock rounding error");
@@ -256,16 +255,15 @@ void icu_lld_start(ICUDriver *icup) {
   t->ATRLR = 0xFFFFU;
   t->CCER = 0;
 
-  /* Channel 1: input capture on TI1, prescaler 0, no filter, all
-     channels captured from TI1. */
-  ccmr = (0U << 2) | (0U << 4);
-  t->CHCTLR1 = ccmr;
+  /* Channel 1: input capture on TI1, prescaler 0, no filter. */
+  t->CHCTLR1 = TIM_CC1S_0;
 
   /* Start in alternating-edge state: next capture is a rising edge. */
   icup->next_edge = 1U;
 
   t->CTLR1 = 0;
   t->DMAINTENR = 0;
+  t->SWEVGR = TIM_UG;
 }
 
 /**
@@ -299,25 +297,23 @@ void icu_lld_start_capture(ICUDriver *icup) {
   osalDbgAssert(cfg->callback != NULL, "no callback");
   osalDbgAssert((cfg->mode & ICU_USE_ICU) != 0U, "capture not enabled");
 
-  ccmr = t->CHCTLR1 & 0xFFFCU;
+  ccmr = (uint16_t)((t->CHCTLR1 & (uint16_t)~TIM_CC1S) | TIM_CC1S_0);
 
-  /* Enable capture on channel 1, edge according to the requested mode. */
+  /* Enable capture on channel 1, the polarity is changed by the edge
+     state machine. */
   if ((cfg->mode & ICU_USE_BOTH_EDGES) == ICU_USE_BOTH_EDGES) {
     icup->next_edge = 1U;
-    ccmr |= 0U;
   }
   else if ((cfg->mode & ICU_USE_FALLING_EDGE) != 0U) {
     icup->next_edge = 2U;
-    ccmr |= 0U;
   }
   else {
     icup->next_edge = 1U;
-    ccmr |= 0U;
   }
   t->CHCTLR1 = ccmr;
 
   /* Clear pending and enable. */
-  t->INTFR = (uint16_t)~TIM_CC1IF;
+  t->INTFR = 0U;
   t->DMAINTENR |= TIM_CC1IE;
 
   if (icup->next_edge == 1U) {
@@ -392,10 +388,10 @@ void icu_lld_serve_interrupt(ICUDriver *icup) {
 
     if (icup->next_edge == 1U) {
       /* Rising edge captured: period complete, next is falling. */
+      icup->period = (icucnt_t)(value - icup->last);
       icup->last = value;
       icup->next_edge = 2U;
       t->CCER = (t->CCER & 0xFFFCU) | TIM_CC1E | TIM_CC1P;
-      icup->period = value;
       if (cfg->callback != NULL) {
         cfg->callback(icup);
       }
