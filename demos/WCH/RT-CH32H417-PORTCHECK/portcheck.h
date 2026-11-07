@@ -64,6 +64,11 @@ extern volatile uint32_t dac_sine_cycles;
 extern volatile uint16_t dac_last_ch1;
 extern volatile uint16_t dac_last_ch2;
 extern volatile uint32_t dac_last_mv;
+extern volatile uint32_t pwm_periods;
+extern volatile uint32_t pwm_steps;
+extern volatile uint32_t pwm_failures;
+extern volatile uint32_t pwm_duty;
+extern volatile uint32_t pwm_frequency;
 
 /*===========================================================================*/
 /* Module entry points.                                                       */
@@ -79,6 +84,7 @@ void can_test_start(void);
 void trng_test_start(void);
 void usbfs_test_start(void);
 void dac_test_start(void);
+void pwm_test_start(void);
 void dma_test_run(void);
 
 #endif /* PORTCHECK_H */

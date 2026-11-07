@@ -45,6 +45,9 @@
  *                              every 2s and repeated packets on the host
  *          - test_dac.c      : DAC1 staircase on both channels (PA4, PA5)
  *                              followed by a DMA fed sine wave
+ *          - test_pwm.c      : PWM duty cycle sweep on TIM1 (PE11, PE13) and
+ *                              TIM4 (PD12, PD13), the frequency measured by
+ *                              the periodic notification
  *
  *          Observation points of the debugger: counter1, counter2,
  *          fcounter1, fcounter2, systime_snapshot, main_loops,
@@ -52,8 +55,9 @@
  *          can_tx_frames, can_rx_frames, can_failures, trng_generations,
  *          trng_failures, usb_events, usb_tx_frames, usb_rx_frames,
  *          usb_ctl_flags, dac_samples, dac_failures, dac_sine_cycles,
- *          dac_last_ch1, dac_last_ch2 and dac_last_mv. The LED on PD11
- *          blinks with a 500ms period (PAL).
+ *          dac_last_ch1, dac_last_ch2, dac_last_mv, pwm_periods,
+ *          pwm_steps, pwm_failures, pwm_duty and pwm_frequency. The LED
+ *          on PD11 blinks with a 500ms period (PAL).
  *
  * @addtogroup RT
  * @{
@@ -111,6 +115,7 @@ int main(void) {
   // can_test_start();
   usbfs_test_start();
   dac_test_start();
+  pwm_test_start();
   // console_test_start();
 
   while (true) {
