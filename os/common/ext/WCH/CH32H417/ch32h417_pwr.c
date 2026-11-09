@@ -227,8 +227,8 @@ void PWR_VDD12ExternPower(void)
 {
     uint32_t cfg = 0;
 
-    cfg = *(vu32*)SYS_CFGR0_BASE;
+    cfg = *(volatile uint32_t*)SYS_CFGR0_BASE;
     cfg &= ~((0x7 << 4) | (0x7 << 14) | (0x7 << 17));
     cfg |= ((0x1 << 4) | (0x1 << 14) | (0x1 << 17));
-    *(vu32*)SYS_CFGR0_BASE = cfg;    
+    *(volatile uint32_t*)SYS_CFGR0_BASE = cfg;    
 }

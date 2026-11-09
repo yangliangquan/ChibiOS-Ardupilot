@@ -1097,14 +1097,14 @@ void ADC_ClearITPendingBit(ADC_TypeDef *ADCx, uint16_t ADC_IT)
  *
  * @return  Temper - Temperature Value.
  */
-s32 TempSensor_Volt_To_Temper(s32 Value)
+int32_t TempSensor_Volt_To_Temper(int32_t Value)
 {
-    s32 Temper, Refer_Volt, Refer_Temper;
-    s32 k = 43;
+    int32_t Temper, Refer_Volt, Refer_Temper;
+    int32_t k = 43;
 
     FLASH_BOOT_GetMode();
-    Refer_Volt = (s32)((*(u32 *)0x1FFFF76C) & 0x0000FFFF);
-    Refer_Temper = (s32)(((*(u32 *)0x1FFFF76C) >> 16) & 0x0000FFFF);
+    Refer_Volt = (int32_t)((*(uint32_t *)0x1FFFF76C) & 0x0000FFFF);
+    Refer_Temper = (int32_t)(((*(uint32_t *)0x1FFFF76C) >> 16) & 0x0000FFFF);
 
     Temper = Refer_Temper - ((Value - Refer_Volt) * 10 + (k >> 1)) / k;
 

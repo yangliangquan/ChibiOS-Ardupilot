@@ -206,7 +206,7 @@ FlagStatus ADC_GetFlagStatus(ADC_TypeDef* ADCx, uint16_t ADC_FLAG);
 void ADC_ClearFlag(ADC_TypeDef* ADCx, uint16_t ADC_FLAG);
 ITStatus ADC_GetITStatus(ADC_TypeDef* ADCx, uint16_t ADC_IT);
 void ADC_ClearITPendingBit(ADC_TypeDef* ADCx, uint16_t ADC_IT);
-s32 TempSensor_Volt_To_Temper(s32 Value);
+int32_t TempSensor_Volt_To_Temper(int32_t Value);
 void ADC_BufferCmd(ADC_TypeDef* ADCx, FunctionalState NewState);
 void ADC_ANA_RST_Cmd(ADC_TypeDef *ADCx, FunctionalState NewState);
 void ADC_SW_PRE_Cmd(ADC_TypeDef *ADCx, FunctionalState NewState);

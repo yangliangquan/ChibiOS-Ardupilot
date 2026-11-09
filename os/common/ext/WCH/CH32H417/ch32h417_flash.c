@@ -104,7 +104,7 @@ void FLASH_Lock(void)
  */
 FLASH_Status FLASH_ErasePage(uint32_t Page_Address)
 {
-    if(((*(vu32*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
+    if(((*(volatile uint32_t*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
     {
         Page_Address &= 0xFFFFE000;
     }
@@ -752,7 +752,7 @@ void FLASH_Lock_Fast(void)
  */
 void FLASH_EraseBlock_Fast(uint32_t Block_Address)
 {
-    if(((*(vu32*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
+    if(((*(volatile uint32_t*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
     {
         Block_Address &= 0xFFFF0000;
     }
@@ -1001,7 +1001,7 @@ FLASH_Status FLASH_ROM_ERASE(uint32_t StartAddr, uint32_t Length)
     uint32_t Addr0 = 0, Addr1 = 0, Length0 = 0, Length1 = 0;
 
     FLASH_Status status = FLASH_COMPLETE;
-    if(((*(vu32*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
+    if(((*(volatile uint32_t*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
     {
         if((StartAddr < ValidAddrStart) || (StartAddr >= ValidAddrEnd_Dual))
         {
@@ -1196,7 +1196,7 @@ FLASH_Status FLASH_ROM_WRITE(uint32_t StartAddr, uint32_t *pbuf, uint32_t Length
 
     FLASH_Status status = FLASH_COMPLETE;
 
-    if(((*(vu32*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
+    if(((*(volatile uint32_t*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
     {
         if((StartAddr < ValidAddrStart) || (StartAddr >= ValidAddrEnd_Dual))
         {
@@ -1301,7 +1301,7 @@ __attribute__((optimize("O0"))) uint32_t FLASH_BOOT_GetMode( void )
  */
 FLASHCapacity FLASH_GetCapacity( void )
 {
-    if(((*(vu32*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
+    if(((*(volatile uint32_t*)FLASH_CFGR0_BASE) & (1<<28)) != 0)
     {
         return FLASHCapacity_960K;
     }
