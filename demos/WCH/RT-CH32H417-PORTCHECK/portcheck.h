@@ -89,6 +89,9 @@ extern volatile uint32_t cry_blocks;
 extern volatile uint32_t cry_failures;
 extern volatile uint32_t cry_rounds;
 extern volatile uint32_t cry_last_error;
+extern volatile uint32_t exti_edges;
+extern volatile uint32_t exti_rounds;
+extern volatile uint32_t exti_failures;
 
 /*===========================================================================*/
 /* Module entry points.                                                       */
@@ -109,6 +112,7 @@ void icu_test_start(void);
 void rtc_test_start(void);
 void spi_test_start(void);
 void ecdc_test_start(void);
+void exti_test_start(void);
 void dma_test_run(void);
 
 #endif /* PORTCHECK_H */

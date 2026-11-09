@@ -57,6 +57,8 @@
  *                              8 and 16 bit frames in all SPI modes
  *          - test_ecdc.c     : ECDC AES engine against the FIPS-197 ECB
  *                              vectors and a NIST SP 800-38A CTR vector
+ *          - test_exti.c     : EXTI line 0 on PC0, the pad is toggled by
+ *                              the test and every edge must interrupt
  *
  *          Observation points of the debugger: counter1, counter2,
  *          fcounter1, fcounter2, systime_snapshot, main_loops,
@@ -70,8 +72,9 @@
  *          rtc_seconds, rtc_alarms, rtc_overflows, rtc_checks,
  *          rtc_failures, rtc_last_epoch, rtc_rate_mhz, spi_transfers,
  *          spi_failures, spi_rounds, spi_last_error, cry_blocks,
- *          cry_failures, cry_rounds and cry_last_error. The LED on PD11
- *          blinks with a 500ms period (PAL).
+ *          cry_failures, cry_rounds, cry_last_error, exti_edges,
+ *          exti_rounds and exti_failures. The LED on PD11 blinks with a
+ *          500ms period (PAL).
  *
  * @addtogroup RT
  * @{
@@ -134,6 +137,7 @@ int main(void) {
   // rtc_test_start();
   // spi_test_start();
   ecdc_test_start();
+  exti_test_start();
   // console_test_start();
   while (true) {
     LED_TOGGLE();

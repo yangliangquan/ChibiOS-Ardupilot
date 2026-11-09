@@ -109,6 +109,11 @@ typedef GPIO_TypeDef *ioportid_t;
  */
 typedef uint32_t iopadid_t;
 
+/**
+ * @brief   Type of a pad event mode.
+ */
+typedef uint32_t ioeventmode_t;
+
 /*===========================================================================*/
 /* I/O Ports Identifiers.                                                    */
 /*===========================================================================*/
@@ -149,6 +154,14 @@ typedef uint32_t iopadid_t;
  */
 #define PAL_MODE_ALTERNATE_INPUT(n)                                         \
   (0x300U | ((iomode_t)(n) << 4))
+
+/**
+ * @brief   EXTI group interrupt priority.
+ * @note    Both EXTI7_0 and EXTI15_8 vectors use this priority.
+ */
+#if !defined(CH32H417_PAL_EXTI_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_PAL_EXTI_IRQ_PRIORITY      8
+#endif
 /** @} */
 
 /*===========================================================================*/
@@ -203,6 +216,28 @@ typedef uint32_t iopadid_t;
 #define pal_lld_setpadmode(port, pad, mode)                                 \
   _pal_lld_setpadmode(port, pad, mode)
 
+#if (PAL_USE_WAIT == TRUE) || (PAL_USE_CALLBACKS == TRUE) ||                \
+    defined(__DOXYGEN__)
+#define pal_lld_enablepadevent(port, pad, mode)                             \
+  _pal_lld_enablepadevent(port, pad, mode)
+
+#define pal_lld_disablepadevent(port, pad)                                  \
+  _pal_lld_disablepadevent(port, pad)
+
+#define pal_lld_get_pad_event(port, pad)                                    \
+  &_pal_events[pad]; (void)(port)
+
+#define pal_lld_get_line_event(line)                                        \
+  &_pal_events[PAL_PAD(line)]
+
+#define pal_lld_ispadeventenabled(port, pad)                                \
+  (bool)((EXTI->INTENR & (1UL << (uint32_t)(pad))) != 0U)
+#endif
+
+#if (PAL_USE_WAIT == TRUE) || (PAL_USE_CALLBACKS == TRUE)
+extern palevent_t _pal_events[16];
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -229,6 +264,12 @@ extern "C" {
   void _pal_lld_clearpad(ioportid_t port, iopadid_t pad);
   void _pal_lld_togglepad(ioportid_t port, iopadid_t pad);
   void _pal_lld_setpadmode(ioportid_t port, iopadid_t pad, iomode_t mode);
+#if (PAL_USE_WAIT == TRUE) || (PAL_USE_CALLBACKS == TRUE)
+  void _pal_lld_enablepadevent(ioportid_t port,
+                               iopadid_t pad,
+                               ioeventmode_t mode);
+  void _pal_lld_disablepadevent(ioportid_t port, iopadid_t pad);
+#endif
 #ifdef __cplusplus
 }
 #endif

@@ -28,6 +28,10 @@
 
 #include "ch32h417_gpio.h"
 
+#if (PAL_USE_WAIT == TRUE) || (PAL_USE_CALLBACKS == TRUE)
+palevent_t _pal_events[16];
+#endif
+
 /*===========================================================================*/
 /* Driver local functions.                                                   */
 /*===========================================================================*/
@@ -43,6 +47,28 @@ static void gpio_clock_enable(void) {
                         RCC_HB2Periph_GPIOF,
                         ENABLE);
 }
+
+#if (PAL_USE_WAIT == TRUE) || (PAL_USE_CALLBACKS == TRUE)
+static uint8_t gpio_port_source(ioportid_t port) {
+
+  if (port == GPIOA) {
+    return GPIO_PortSourceGPIOA;
+  }
+  if (port == GPIOB) {
+    return GPIO_PortSourceGPIOB;
+  }
+  if (port == GPIOC) {
+    return GPIO_PortSourceGPIOC;
+  }
+  if (port == GPIOD) {
+    return GPIO_PortSourceGPIOD;
+  }
+  if (port == GPIOE) {
+    return GPIO_PortSourceGPIOE;
+  }
+  return GPIO_PortSourceGPIOF;
+}
+#endif
 
 static void set_pad_mode(ioportid_t port, iopadid_t pad, iomode_t mode) {
   GPIO_TypeDef *gp = (GPIO_TypeDef *)port;
@@ -107,6 +133,19 @@ static void set_pad_mode(ioportid_t port, iopadid_t pad, iomode_t mode) {
  * @notapi
  */
 void _pal_lld_init(void) {
+#if (PAL_USE_WAIT == TRUE) || (PAL_USE_CALLBACKS == TRUE)
+  unsigned i;
+
+  for (i = 0U; i < 16U; i++) {
+    _pal_init_event(i);
+  }
+  NVIC_SetPriority(EXTI7_0_IRQn,
+                   (uint8_t)CH32_IRQ_PRIORITY(CH32H417_PAL_EXTI_IRQ_PRIORITY));
+  NVIC_SetPriority(EXTI15_8_IRQn,
+                   (uint8_t)CH32_IRQ_PRIORITY(CH32H417_PAL_EXTI_IRQ_PRIORITY));
+  NVIC_EnableIRQ(EXTI7_0_IRQn);
+  NVIC_EnableIRQ(EXTI15_8_IRQn);
+#endif
 
   gpio_clock_enable();
 }
@@ -335,6 +374,120 @@ void _pal_lld_setgroupmode(ioportid_t port,
     }
   }
 }
+
+#if (PAL_USE_WAIT == TRUE) || (PAL_USE_CALLBACKS == TRUE)
+/**
+ * @brief   Pad event enable.
+ * @note    Programming an unknown or unsupported mode is silently ignored.
+ *
+ * @param[in] port      port identifier
+ * @param[in] pad       pad number within the port
+ * @param[in] mode      pad event mode
+ *
+ * @notapi
+ */
+void _pal_lld_enablepadevent(ioportid_t port,
+                             iopadid_t pad,
+                             ioeventmode_t mode) {
+  uint32_t padmask = 1UL << (uint32_t)pad;
+
+  osalDbgCheck(pad < 16U);
+  osalDbgAssert(((EXTI->RTENR | EXTI->FTENR) & padmask) == 0U,
+                "channel already in use");
+
+  GPIO_EXTILineConfig(gpio_port_source(port), (uint8_t)pad);
+
+  if ((mode & PAL_EVENT_MODE_RISING_EDGE) != 0U) {
+    EXTI->RTENR |= padmask;
+  }
+  else {
+    EXTI->RTENR &= ~padmask;
+  }
+  if ((mode & PAL_EVENT_MODE_FALLING_EDGE) != 0U) {
+    EXTI->FTENR |= padmask;
+  }
+  else {
+    EXTI->FTENR &= ~padmask;
+  }
+
+  EXTI->INTFR = padmask;
+  EXTI->EVENR &= ~padmask;
+  if ((mode & PAL_EVENT_MODE_EDGES_MASK) != 0U) {
+    EXTI->INTENR |= padmask;
+  }
+  else {
+    EXTI->INTENR &= ~padmask;
+  }
+}
+
+/**
+ * @brief   Pad event disable.
+ * @details This function disables previously programmed event callbacks.
+ *
+ * @param[in] port      port identifier
+ * @param[in] pad       pad number within the port
+ *
+ * @notapi
+ */
+void _pal_lld_disablepadevent(ioportid_t port, iopadid_t pad) {
+  uint32_t padmask = 1UL << (uint32_t)pad;
+
+  (void)port;
+  osalDbgCheck(pad < 16U);
+
+  EXTI->INTENR &= ~padmask;
+  EXTI->EVENR  &= ~padmask;
+  EXTI->RTENR  &= ~padmask;
+  EXTI->FTENR  &= ~padmask;
+  EXTI->INTFR   = padmask;
+
+  _pal_clear_event(pad);
+}
+
+/**
+ * @brief   EXTI[7:0] interrupt handler.
+ *
+ * @isr
+ */
+OSAL_IRQ_HANDLER(EXTI7_0_IRQHandler) {
+  uint32_t pr;
+  unsigned ch;
+
+  OSAL_IRQ_PROLOGUE();
+
+  pr = EXTI->INTFR & EXTI->INTENR & 0x000000FFU;
+  EXTI->INTFR = pr;
+  for (ch = 0U; ch < 8U; ch++) {
+    if ((pr & (1UL << ch)) != 0U) {
+      _pal_isr_code(ch);
+    }
+  }
+
+  OSAL_IRQ_EPILOGUE();
+}
+
+/**
+ * @brief   EXTI[15:8] interrupt handler.
+ *
+ * @isr
+ */
+OSAL_IRQ_HANDLER(EXTI15_8_IRQHandler) {
+  uint32_t pr;
+  unsigned ch;
+
+  OSAL_IRQ_PROLOGUE();
+
+  pr = EXTI->INTFR & EXTI->INTENR & 0x0000FF00U;
+  EXTI->INTFR = pr;
+  for (ch = 8U; ch < 16U; ch++) {
+    if ((pr & (1UL << ch)) != 0U) {
+      _pal_isr_code(ch);
+    }
+  }
+
+  OSAL_IRQ_EPILOGUE();
+}
+#endif /* PAL_USE_WAIT || PAL_USE_CALLBACKS */
 
 #endif /* HAL_USE_PAL == TRUE */
 

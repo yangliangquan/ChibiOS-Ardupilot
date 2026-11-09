@@ -101,7 +101,8 @@ LDSCRIPT= $(STARTUPLD)/CH32H417_FLASH.ld
 # C sources.
 CSRC = $(ALLCSRC) main.c test_dma.c test_counters.c test_fp.c test_console.c \
        test_sdc.c test_wspi.c test_adc.c test_can.c test_trng.c test_usbfs.c \
-       test_dac.c test_pwm.c test_icu.c test_rtc.c test_spi.c test_ecdc.c
+       test_dac.c test_pwm.c test_icu.c test_rtc.c test_spi.c test_ecdc.c \
+       test_exti.c
 
 # C++ sources.
 CPPSRC = $(ALLCPPSRC)
