@@ -131,6 +131,8 @@ void wdg_lld_stop(WDGDriver *wdgp) {
  */
 void wdg_lld_reset(WDGDriver *wdgp) {
 
+  (void)wdgp;
+
 #if (CH32H417_WDG_USE_WWDG == TRUE)
   if (wdgp == &WDGD2) {
     WWDG->CTLR = CH32_WWDG_WDGA | wdgp->config->rlr;
