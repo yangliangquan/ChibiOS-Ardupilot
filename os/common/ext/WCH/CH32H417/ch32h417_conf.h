@@ -51,7 +51,7 @@
 #include "ch32h417_usart.h"
 #include "ch32h417_wwdg.h"
 // #include "ch32h417_usbpd.h"
-#include "ch32h417_usb.h"
+// #include "ch32h417_usb.h"
 #include "ch32h417_pioc.h"
 
 

@@ -200,6 +200,8 @@ static void serve_interrupt(SerialDriver *sdp) {
 
   u->CTLR1 = cr1;
 
+  _serial_irq_code(sdp);
+
   if (errs != 0U) {
     osalSysLockFromISR();
     chnAddFlagsI(sdp, errs);
@@ -457,7 +459,11 @@ void sd_lld_start(SerialDriver *sdp, const SerialConfig *config) {
   USART_Cmd(u, ENABLE);
 
   /* Receiver interrupt enabled. */
-  u->CTLR1 |= USART_CTLR_RXNEIE;
+  sdp->config = config;
+  u->CTLR2 |= config->cr2;
+  u->CTLR3 |= config->cr3;
+  u->CTLR1 |= config->cr1;
+  u->CTLR1 |= USART_CTLR1_RXNEIE;
 }
 
 /**

@@ -71,10 +71,10 @@
 .type _port_thread_start,@function
 _port_thread_start:
 #if CH_DBG_SYSTEM_STATE_CHECK
-    jal     ra, __dbg_check_unlock
+    call    __dbg_check_unlock
 #endif
 #if CH_DBG_STATISTICS
-    jal     ra, __stats_stop_measure_crit_thd
+    call    __stats_stop_measure_crit_thd
 #endif
 #if PORT_RISCV_USE_FPU
     /* New threads start with the default FP control/status settings. */
@@ -84,7 +84,7 @@ _port_thread_start:
     mv      a0, s1
     jalr    ra, s0
     li      a0, 0              # MSG_OK
-    jal     ra, chThdExit
+    call    chThdExit
 
 _zombies:
     j       _zombies

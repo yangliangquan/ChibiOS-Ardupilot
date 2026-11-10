@@ -83,16 +83,24 @@
 /* Driver data structures and types.                                         */
 /*===========================================================================*/
 
+typedef void (*uartirq_t)(void* sd);
+
 /**
  * @brief   CH32H417 Serial Driver configuration structure.
  */
 typedef struct hal_serial_config {
-  /**
-   * @brief Bit rate.
-   */
-  uint32_t                  speed;
-  /* End of the mandatory fields.*/
+  uint32_t    speed;
+  uint16_t    cr1;
+  uint16_t    cr2;
+  uint16_t    cr3;
+  uartirq_t   irq_cb;
+  void*       ctx;
 } SerialConfig;
+
+#define _serial_irq_code(sd) {                          \
+  if ((sd)->config->irq_cb != NULL)                     \
+    (sd)->config->irq_cb((sd)->config->ctx);            \
+}
 
 /**
  * @brief   @p SerialDriver specific data.
@@ -111,7 +119,8 @@ typedef struct hal_serial_config {
   uint8_t                   ob[SERIAL_BUFFERS_SIZE];                        \
   /* End of the mandatory fields.*/                                         \
   /* Associated USART unit.*/                                               \
-  USART_TypeDef             *usart;
+  USART_TypeDef             *usart;                                         \
+  const SerialConfig *config;
 
 /*===========================================================================*/
 /* External declarations.                                                    */
