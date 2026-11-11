@@ -1,573 +1,118 @@
 /*
-    ChibiOS - Copyright (C) 2006-2026 Giovanni Di Sirio.
+    ChibiOS - Copyright (C) 2026 ChibiOS contributors.
 
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance with the License.
-    You may obtain a copy of the License at
+    This file is part of ChibiOS.
 
-        http://www.apache.org/licenses/LICENSE-2.0
+    ChibiOS is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 3 of the License, or
+    (at your option) any later version.
 
-    Unless required by applicable law or agreed to in writing, software
-    distributed under the License is distributed on an "AS IS" BASIS,
-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-    See the License for the specific language governing permissions and
-    limitations under the License.
+    ChibiOS is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-/**
- * @file    templates/halconf.h
- * @brief   HAL configuration header.
- * @details HAL configuration file, this file allows to enable or disable the
- *          various device drivers from your application. You may also use
- *          this file in order to override the device drivers default settings.
- *
- * @addtogroup HAL_CONF
- * @{
+/*
+ * HAL configuration for the CH32H417 V5F kernel check demo.
  */
 
-#ifndef HALCONF_H
-#define HALCONF_H
-
-#define _CHIBIOS_HAL_CONF_
-#define _CHIBIOS_HAL_CONF_VER_9_1_
-
-#include "mcuconf.h"
-
-/**
- * @brief   Enables the HAL safety subsystem.
- */
-#if !defined(HAL_USE_SAFETY) || defined(__DOXYGEN__)
-#define HAL_USE_SAFETY                      FALSE
-#endif
-
-/**
- * @brief   Enables the PAL subsystem.
- */
-#if !defined(HAL_USE_PAL) || defined(__DOXYGEN__)
-#define HAL_USE_PAL                         TRUE
-#endif
-
-/**
- * @brief   Enables the ADC subsystem.
- */
-#if !defined(HAL_USE_ADC) || defined(__DOXYGEN__)
-#define HAL_USE_ADC                          TRUE
-#endif
-
-/**
- * @brief   Enables the CAN subsystem.
- */
-#if !defined(HAL_USE_CAN) || defined(__DOXYGEN__)
-#define HAL_USE_CAN                         TRUE
-#endif
-
-/**
- * @brief   Enables the cryptographic subsystem.
- */
-#if !defined(HAL_USE_CRY) || defined(__DOXYGEN__)
-#define HAL_USE_CRY                         TRUE
-#endif
-
-/**
- * @brief   Enables the DAC subsystem.
- */
-#if !defined(HAL_USE_DAC) || defined(__DOXYGEN__)
-#define HAL_USE_DAC                         TRUE
-#endif
-
-/**
- * @brief   Enables the EFlash subsystem.
- */
-#if !defined(HAL_USE_EFL) || defined(__DOXYGEN__)
-#define HAL_USE_EFL                          TRUE
-#endif
-
-/**
- * @brief   Enables the GPT subsystem.
- */
-#if !defined(HAL_USE_GPT) || defined(__DOXYGEN__)
-#define HAL_USE_GPT                          TRUE
-#endif
-
-/**
- * @brief   Enables the I2C subsystem.
- */
-#if !defined(HAL_USE_I2C) || defined(__DOXYGEN__)
-#define HAL_USE_I2C                          TRUE
-#endif
-
-/**
- * @brief   Enables the I2S subsystem.
- */
-#if !defined(HAL_USE_I2S) || defined(__DOXYGEN__)
-#define HAL_USE_I2S                         TRUE
-#endif
-
-/**
- * @brief   Enables the ICU subsystem.
- */
-#if !defined(HAL_USE_ICU) || defined(__DOXYGEN__)
-#define HAL_USE_ICU                          TRUE
-#endif
-
-/**
- * @brief   Enables the MAC subsystem.
- */
-#if !defined(HAL_USE_MAC) || defined(__DOXYGEN__)
-#define HAL_USE_MAC                         FALSE
-#endif
-
-/**
- * @brief   Enables the MMC_SPI subsystem.
- */
-#if !defined(HAL_USE_MMC_SPI) || defined(__DOXYGEN__)
-#define HAL_USE_MMC_SPI                      TRUE
-#endif
-
-/**
- * @brief   Enables the PWM subsystem.
- */
-#if !defined(HAL_USE_PWM) || defined(__DOXYGEN__)
-#define HAL_USE_PWM                          TRUE
-#endif
-
-/**
- * @brief   Enables the RTC subsystem.
- */
-#if !defined(HAL_USE_RTC) || defined(__DOXYGEN__)
-#define HAL_USE_RTC                          TRUE
-#endif
-
-/**
- * @brief   Enables the SDC subsystem.
- */
-#if !defined(HAL_USE_SDC) || defined(__DOXYGEN__)
-#define HAL_USE_SDC                         TRUE
-#endif
-
-/**
- * @brief   Enables the SERIAL subsystem.
- */
-#if !defined(HAL_USE_SERIAL) || defined(__DOXYGEN__)
-#define HAL_USE_SERIAL                      TRUE
-#endif
-
-/**
- * @brief   Enables the SERIAL over USB subsystem.
- */
-#if !defined(HAL_USE_SERIAL_USB) || defined(__DOXYGEN__)
-#define HAL_USE_SERIAL_USB                 FALSE
-#endif
-
-/**
- * @brief   Enables the SIO subsystem.
- */
-#if !defined(HAL_USE_SIO) || defined(__DOXYGEN__)
-#define HAL_USE_SIO                         FALSE
-#endif
-
-/**
- * @brief   Enables the SPI subsystem.
- */
-#if !defined(HAL_USE_SPI) || defined(__DOXYGEN__)
-#define HAL_USE_SPI                          TRUE
-#endif
-
-/**
- * @brief   Enables the TRNG subsystem.
- */
-#if !defined(HAL_USE_TRNG) || defined(__DOXYGEN__)
-#define HAL_USE_TRNG                        TRUE
-#endif
-
-/**
- * @brief   Enables the UART subsystem.
- */
-#if !defined(HAL_USE_UART) || defined(__DOXYGEN__)
-#define HAL_USE_UART                         FALSE
-#endif
-
-/**
- * @brief   Enables the USB subsystem.
- */
-#if !defined(HAL_USE_USB) || defined(__DOXYGEN__)
-#define HAL_USE_USB                         TRUE
-#endif
-
-/**
- * @brief   Enables the WDG subsystem.
- */
-#if !defined(HAL_USE_WDG) || defined(__DOXYGEN__)
-#define HAL_USE_WDG                          TRUE
-#endif
-
-/**
- * @brief   Enables the WSPI subsystem.
- */
-#if !defined(HAL_USE_WSPI) || defined(__DOXYGEN__)
-#define HAL_USE_WSPI                        TRUE
+#ifndef CH32H417_MCUCONF
+#define CH32H417_MCUCONF
 #endif
 
 /*
- * CAN sleep/wakeup is not implemented by the CH32H417 driver yet.
+ * USART1 on PA9/PA10, 115200 8N1 console. All eight units enabled.
  */
-#define CAN_USE_SLEEP_MODE                  FALSE
+#define CH32H417_SERIAL_USE_USART1             TRUE
+#define CH32H417_SERIAL_USE_USART2             TRUE
+#define CH32H417_SERIAL_USE_USART3             TRUE
+#define CH32H417_SERIAL_USE_USART4             TRUE
+#define CH32H417_SERIAL_USE_USART5             TRUE
+#define CH32H417_SERIAL_USE_USART6             TRUE
+#define CH32H417_SERIAL_USE_USART7             TRUE
+#define CH32H417_SERIAL_USE_USART8             TRUE
 
-/*===========================================================================*/
-/* PAL driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
+/*
+ * The SIO and UART drivers share the USART units with the SERIAL driver,
+ * a unit can only be assigned to one of the three at a time (the LLD
+ * headers fail the build otherwise). Every unit is taken by the SERIAL
+ * console above, so both drivers are disabled here; to exercise them set
+ * the matching CH32H417_SERIAL_USE_USARTx back to FALSE, enable the unit
+ * below and enable HAL_USE_SIO / HAL_USE_UART in halconf.h.
  */
-#if !defined(PAL_USE_CALLBACKS) || defined(__DOXYGEN__)
-#define PAL_USE_CALLBACKS                   TRUE
-#endif
+#define CH32H417_SIO_USE_USART1                FALSE
+#define CH32H417_SIO_USE_USART2                FALSE
+#define CH32H417_SIO_USE_USART3                FALSE
+#define CH32H417_SIO_USE_USART4                FALSE
+#define CH32H417_SIO_USE_USART5                FALSE
+#define CH32H417_SIO_USE_USART6                FALSE
+#define CH32H417_SIO_USE_USART7                FALSE
+#define CH32H417_SIO_USE_USART8                FALSE
 
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
+#define CH32H417_UART_USE_USART1               FALSE
+#define CH32H417_UART_USE_USART2               FALSE
+#define CH32H417_UART_USE_USART3               FALSE
+#define CH32H417_UART_USE_USART4               FALSE
+#define CH32H417_UART_USE_USART5               FALSE
+#define CH32H417_UART_USE_USART6               FALSE
+#define CH32H417_UART_USE_USART7               FALSE
+#define CH32H417_UART_USE_USART8               FALSE
+
+/*
+ * Unit assignments.
  */
-#if !defined(PAL_USE_WAIT) || defined(__DOXYGEN__)
-#define PAL_USE_WAIT                        FALSE
-#endif
-
-/*===========================================================================*/
-/* ADC driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
+#define CH32H417_WDG_USE_IWDG                  TRUE
+#define CH32H417_EFL_USE_EFL1                  TRUE
+#define CH32H417_GPT_USE_TIM7                  TRUE
+#define CH32H417_GPT_USE_TIM8                  TRUE
+#define CH32H417_ICU_USE_TIM3                  TRUE
+#define CH32H417_PWM_USE_TIM1                  TRUE
+#define CH32H417_PWM_USE_TIM4                  TRUE
+#define CH32H417_SPI_USE_SPI1                  TRUE
+#define CH32H417_SPI_USE_SPI2                  FALSE
+#define CH32H417_SPI_USE_SPI3                  FALSE
+#define CH32H417_SPI_USE_SPI4                  TRUE
+/*
+ * No DMA channel has to be assigned: the DMAMUX routing is fully flexible,
+ * every driver takes a free channel at start and routes its own request onto
+ * it. Only the interrupt priorities have to be configured.
+ *
+ * SPI2/SPI3 host I2S instead of the SPI driver (the IRQ vector of a
+ * unit is shared between the two drivers).
  */
-#if !defined(ADC_USE_WAIT) || defined(__DOXYGEN__)
-#define ADC_USE_WAIT                        TRUE
-#endif
-
-/**
- * @brief   Enables the @p adcAcquireBus() and @p adcReleaseBus() APIs.
- * @note    Disabling this option saves both code and data space.
+#define CH32H417_I2S_USE_SPI2                  TRUE
+#define CH32H417_I2S_USE_SPI3                  TRUE
+#define CH32H417_I2C_USE_I2C1                  TRUE
+#define CH32H417_I2C_USE_I2C2                  TRUE
+#define CH32H417_I2C_USE_I2C3                  TRUE
+#define CH32H417_I2C_USE_I2C4                  TRUE
+#define CH32H417_ADC_USE_ADC1                  TRUE
+#define CH32H417_ADC_USE_ADC2                  TRUE
+#define CH32H417_RTC_USE_RTC1                  TRUE
+#define CH32H417_CAN_USE_CAN1                  TRUE
+#define CH32H417_CAN_USE_CAN2                  TRUE
+#define CH32H417_CAN_USE_CAN3                  TRUE
+#define CH32H417_DAC_USE_DAC1                  TRUE
+#define CH32H417_TRNG_USE_RNG                  TRUE
+#define CH32H417_WDG_USE_WWDG                  TRUE
+/*
+ * SDC backend: the slot is wired to the SDIO controller, the pin set
+ * (PB10/PB11, PE8/PE9, PB3/PB4) is not reachable from the SDMMC
+ * controller. SDMMC is kept for reference.
  */
-#if !defined(ADC_USE_MUTUAL_EXCLUSION) || defined(__DOXYGEN__)
-#define ADC_USE_MUTUAL_EXCLUSION            TRUE
-#endif
-
-/*===========================================================================*/
-/* CAN driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Sleep mode related APIs inclusion switch.
+#define CH32H417_SDC_USE_SDIO                  TRUE
+#define CH32H417_SDC_USE_SDMMC                 FALSE
+/*
+ * QSPI XIP (memory mapped) windows, confirmed:
+ *   QSPI1: 0x90000000, QSPI2: 0x70000000
+ * (defaults in LLD/QSPIv1/hal_wspi_lld.h match these values).
  */
-#if !defined(CAN_USE_SLEEP_MODE) || defined(__DOXYGEN__)
-#define CAN_USE_SLEEP_MODE                  TRUE
-#endif
-
-/**
- * @brief   Enforces the driver to use direct callbacks rather than OSAL events.
- */
-#if !defined(CAN_ENFORCE_USE_CALLBACKS) || defined(__DOXYGEN__)
-#define CAN_ENFORCE_USE_CALLBACKS           FALSE
-#endif
-
-/*===========================================================================*/
-/* CRY driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Enables the SW fall-back of the cryptographic driver.
- * @details When enabled, this option, activates a fall-back software
- *          implementation for algorithms not supported by the underlying
- *          hardware.
- * @note    Fall-back implementations may not be present for all algorithms.
- */
-#if !defined(HAL_CRY_USE_FALLBACK) || defined(__DOXYGEN__)
-#define HAL_CRY_USE_FALLBACK                FALSE
-#endif
-
-/**
- * @brief   Makes the driver forcibly use the fall-back implementations.
- */
-#if !defined(HAL_CRY_ENFORCE_FALLBACK) || defined(__DOXYGEN__)
-#define HAL_CRY_ENFORCE_FALLBACK            FALSE
-#endif
-
-/*===========================================================================*/
-/* DAC driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(DAC_USE_WAIT) || defined(__DOXYGEN__)
-#define DAC_USE_WAIT                        TRUE
-#endif
-
-/**
- * @brief   Enables the @p dacAcquireBus() and @p dacReleaseBus() APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(DAC_USE_MUTUAL_EXCLUSION) || defined(__DOXYGEN__)
-#define DAC_USE_MUTUAL_EXCLUSION            TRUE
-#endif
-
-/*===========================================================================*/
-/* I2C driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Slave mode API enable switch.
- * @note    The low level driver must support this capability.
- */
-#if !defined(I2C_ENABLE_SLAVE_MODE)
-#define I2C_ENABLE_SLAVE_MODE               FALSE
-#endif
-
-/**
- * @brief   Enables the mutual exclusion APIs on the I2C bus.
- */
-#if !defined(I2C_USE_MUTUAL_EXCLUSION) || defined(__DOXYGEN__)
-#define I2C_USE_MUTUAL_EXCLUSION            TRUE
-#endif
-
-/*===========================================================================*/
-/* MAC driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Enables the zero-copy API.
- */
-#if !defined(MAC_USE_ZERO_COPY) || defined(__DOXYGEN__)
-#define MAC_USE_ZERO_COPY                   TRUE
-#endif
-
-/**
- * @brief   Enables an event sources for incoming packets.
- */
-#if !defined(MAC_USE_EVENTS) || defined(__DOXYGEN__)
-#define MAC_USE_EVENTS                      TRUE
-#endif
-
-/*===========================================================================*/
-/* MMC_SPI driver related settings.                                          */
-/*===========================================================================*/
-
-/**
- * @brief   Timeout before assuming a failure while waiting for card idle.
- * @note    Time is in milliseconds.
- */
-#if !defined(MMC_IDLE_TIMEOUT_MS) || defined(__DOXYGEN__)
-#define MMC_IDLE_TIMEOUT_MS                 1000
-#endif
-
-/**
- * @brief   Mutual exclusion on the SPI bus.
- */
-#if !defined(MMC_USE_MUTUAL_EXCLUSION) || defined(__DOXYGEN__)
-#define MMC_USE_MUTUAL_EXCLUSION            TRUE
-#endif
-
-/*===========================================================================*/
-/* SDC driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Number of initialization attempts before rejecting the card.
- * @note    Attempts are performed at 10mS intervals.
- */
-#if !defined(SDC_INIT_RETRY) || defined(__DOXYGEN__)
-#define SDC_INIT_RETRY                      100
-#endif
-
-/**
- * @brief   Include support for MMC cards.
- * @note    MMC support is not yet implemented so this option must be kept
- *          at @p FALSE.
- */
-#if !defined(SDC_MMC_SUPPORT) || defined(__DOXYGEN__)
-#define SDC_MMC_SUPPORT                     TRUE
-#endif
-
-/**
- * @brief   Delays insertions.
- * @details If enabled this options inserts delays into the MMC waiting
- *          routines releasing some extra CPU time for the threads with
- *          lower priority, this may slow down the driver a bit however.
- */
-#if !defined(SDC_NICE_WAITING) || defined(__DOXYGEN__)
-#define SDC_NICE_WAITING                    TRUE
-#endif
-
-/**
- * @brief   OCR initialization constant for V20 cards.
- */
-#if !defined(SDC_INIT_OCR_V20) || defined(__DOXYGEN__)
-#define SDC_INIT_OCR_V20                    0x50FF8000U
-#endif
-
-/**
- * @brief   OCR initialization constant for non-V20 cards.
- */
-#if !defined(SDC_INIT_OCR) || defined(__DOXYGEN__)
-#define SDC_INIT_OCR                        0x80100000U
-#endif
-
-/*===========================================================================*/
-/* SERIAL driver related settings.                                           */
-/*===========================================================================*/
-
-/**
- * @brief   Default bit rate.
- * @details Configuration parameter, this is the baud rate selected for the
- *          default configuration.
- */
-#if !defined(SERIAL_DEFAULT_BITRATE) || defined(__DOXYGEN__)
-#define SERIAL_DEFAULT_BITRATE              38400
-#endif
-
-/**
- * @brief   Serial buffers size.
- * @details Configuration parameter, you can change the depth of the queue
- *          buffers depending on the requirements of your application.
- * @note    The default is 16 bytes for both the transmission and receive
- *          buffers.
- */
-#if !defined(SERIAL_BUFFERS_SIZE) || defined(__DOXYGEN__)
-#define SERIAL_BUFFERS_SIZE                 16
-#endif
-
-/*===========================================================================*/
-/* SIO driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Default bit rate.
- * @details Configuration parameter, this is the baud rate selected for the
- *          default configuration.
- */
-#if !defined(SIO_DEFAULT_BITRATE) || defined(__DOXYGEN__)
-#define SIO_DEFAULT_BITRATE                 38400
-#endif
-
-/**
- * @brief   Support for thread synchronization API.
- */
-#if !defined(SIO_USE_SYNCHRONIZATION) || defined(__DOXYGEN__)
-#define SIO_USE_SYNCHRONIZATION             TRUE
-#endif
-
-/*===========================================================================*/
-/* SERIAL_USB driver related setting.                                        */
-/*===========================================================================*/
-
-/**
- * @brief   Serial over USB buffers size.
- * @details Configuration parameter, the buffer size must be a multiple of
- *          the USB data endpoint maximum packet size.
- * @note    The default is 256 bytes for both the transmission and receive
- *          buffers.
- */
-#if !defined(SERIAL_USB_BUFFERS_SIZE) || defined(__DOXYGEN__)
-#define SERIAL_USB_BUFFERS_SIZE             256
-#endif
-
-/**
- * @brief   Serial over USB number of buffers.
- * @note    The default is 2 buffers.
- */
-#if !defined(SERIAL_USB_BUFFERS_NUMBER) || defined(__DOXYGEN__)
-#define SERIAL_USB_BUFFERS_NUMBER           2
-#endif
-
-/*===========================================================================*/
-/* SPI driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(SPI_USE_WAIT) || defined(__DOXYGEN__)
-#define SPI_USE_WAIT                        TRUE
-#endif
-
-/**
- * @brief   Inserts an assertion on function errors before returning.
- */
-#if !defined(SPI_USE_ASSERT_ON_ERROR) || defined(__DOXYGEN__)
-#define SPI_USE_ASSERT_ON_ERROR             TRUE
-#endif
-
-/**
- * @brief   Enables the @p spiAcquireBus() and @p spiReleaseBus() APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(SPI_USE_MUTUAL_EXCLUSION) || defined(__DOXYGEN__)
-#define SPI_USE_MUTUAL_EXCLUSION            TRUE
-#endif
-
-/**
- * @brief   Handling method for SPI CS line.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(SPI_SELECT_MODE) || defined(__DOXYGEN__)
-#define SPI_SELECT_MODE                     SPI_SELECT_MODE_PAD
-#endif
-
-/*===========================================================================*/
-/* UART driver related settings.                                             */
-/*===========================================================================*/
-
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(UART_USE_WAIT) || defined(__DOXYGEN__)
-#define UART_USE_WAIT                       TRUE
-#endif
-
-/**
- * @brief   Enables the @p uartAcquireBus() and @p uartReleaseBus() APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(UART_USE_MUTUAL_EXCLUSION) || defined(__DOXYGEN__)
-#define UART_USE_MUTUAL_EXCLUSION           TRUE
-#endif
-
-/*===========================================================================*/
-/* USB driver related settings.                                              */
-/*===========================================================================*/
-
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(USB_USE_WAIT) || defined(__DOXYGEN__)
-#define USB_USE_WAIT                        TRUE
-#endif
-
-/*===========================================================================*/
-/* WSPI driver related settings.                                             */
-/*===========================================================================*/
-
-/**
- * @brief   Enables synchronous APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(WSPI_USE_WAIT) || defined(__DOXYGEN__)
-#define WSPI_USE_WAIT                       TRUE
-#endif
-
-/**
- * @brief   Enables the @p wspiAcquireBus() and @p wspiReleaseBus() APIs.
- * @note    Disabling this option saves both code and data space.
- */
-#if !defined(WSPI_USE_MUTUAL_EXCLUSION) || defined(__DOXYGEN__)
-#define WSPI_USE_MUTUAL_EXCLUSION           TRUE
-#endif
-
-#endif /* HALCONF_H */
-
-/** @} */
+#define CH32H417_WSPI_USE_QSPI1                TRUE
+#define CH32H417_WSPI_USE_QSPI2                TRUE
+#define CH32H417_CRY_USE_ECDC                  TRUE
+#define CH32H417_USB_USE_USBFS                 TRUE
