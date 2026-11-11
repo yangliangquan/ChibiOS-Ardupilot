@@ -103,7 +103,7 @@ static THD_FUNCTION(adc_test_thd, arg) {
   uint32_t ts_sum;
   uint32_t vref_mv;
   uint32_t ts_mv;
-  s32 temp_deci;
+  int32_t temp_deci;
   msg_t msg;
   unsigned i;
 
@@ -168,7 +168,7 @@ static THD_FUNCTION(adc_test_thd, arg) {
        voltage from the die temperature channel. */
     vref_mv = (ADC_TEST_VREFINT_MV * ADC_TEST_FULL_SCALE) / vrefint;
     ts_mv = ((ts_sum / ADC_TEST_DEPTH) * vref_mv) / ADC_TEST_FULL_SCALE;
-    temp_deci = TempSensor_Volt_To_Temper((s32)ts_mv);
+    temp_deci = TempSensor_Volt_To_Temper((int32_t)ts_mv);
 
     chprintf(chp, "ADC: vrefint=%u (vref=%umV) ts=%u..%u (%umV) ext=%u "
                   "temp=%d.%dC\r\n",

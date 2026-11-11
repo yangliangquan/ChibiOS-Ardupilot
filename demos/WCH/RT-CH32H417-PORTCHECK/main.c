@@ -130,7 +130,7 @@ int main(void) {
   // wspi_test_start();
   // adc_test_start();
   // can_test_start();
-  // usbfs_test_start();
+  usbfs_test_start();
   // dac_test_start();
   // pwm_test_start();
   // icu_test_start();
