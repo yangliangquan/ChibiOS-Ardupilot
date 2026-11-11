@@ -136,6 +136,18 @@
 #endif
 
 /**
+ * @brief   QSPI interrupt priorities (0..15 scale).
+ * @note    Same convention as the other drivers of the port, the DMA
+ *          channel priority above only affects the bus arbitration.
+ */
+#if !defined(CH32H417_WSPI_QSPI1_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_WSPI_QSPI1_IRQ_PRIORITY    8
+#endif
+#if !defined(CH32H417_WSPI_QSPI2_IRQ_PRIORITY) || defined(__DOXYGEN__)
+#define CH32H417_WSPI_QSPI2_IRQ_PRIORITY    8
+#endif
+
+/**
  * @brief   QSPI kernel clock in Hz (both units sit on HB1 = HCLK).
  */
 #if !defined(CH32H417_QSPI_CLOCK) || defined(__DOXYGEN__)
@@ -180,6 +192,14 @@
 #if CH32H417_WSPI_USE_QSPI2 &&                                              \
     !CH32_DMA_IS_VALID_PRIORITY(CH32H417_WSPI_QSPI2_DMA_PRIORITY)
 #error "Invalid DMA priority assigned to QSPI2"
+#endif
+
+#if CH32H417_WSPI_USE_QSPI1 && (CH32H417_WSPI_QSPI1_IRQ_PRIORITY > 15)
+#error "Invalid IRQ priority assigned to QSPI1"
+#endif
+
+#if CH32H417_WSPI_USE_QSPI2 && (CH32H417_WSPI_QSPI2_IRQ_PRIORITY > 15)
+#error "Invalid IRQ priority assigned to QSPI2"
 #endif
 
 #if !defined(CH32_DMA_REQUIRED)
