@@ -102,11 +102,14 @@
 #define PORT_INFO "RV32IMAFC+B - QingKe V5F PFIC/ECLIC"
 /** @} */
 
-/* Inclusion of the RISC-V implementation specific parameters.*/
+/* Inclusion of the RISC-V implementation specific parameters.
+   riscv_encoding.h is assembler-safe and must be visible before the
+   PORT_RISCV_USE_IRQ_STACK conditionals below, also when this file is
+   included from an assembler module. */
+#include "riscv_encoding.h"
 #if !defined(_FROM_ASM_)
 
 #include "ch32h417params.h"
-#include "riscv_encoding.h"
 
 #endif
 
@@ -127,24 +130,39 @@
 /**
  * @brief   Per-thread stack overhead for interrupts servicing.
  * @details This constant is used in the calculation of the correct working
- *          area size. It accounts for the worst-case interrupt nesting depth
- *          (each level consumes one @p port_extctx frame) plus a margin for
- *          the C handler stacks.
+ *          area size. With an independent interrupt stack only the outermost
+ *          interrupt frame stays on the thread stack: its @p port_extctx is
+ *          already accounted for by @p PORT_WA_SIZE, so just the argument
+ *          area and the C stack of the outermost exit/switch path remain.
+ *          With the feature disabled the legacy worst-case reserve for all
+ *          the nesting levels is used instead.
  */
 #if !defined(PORT_INT_REQUIRED_STACK) || defined(__DOXYGEN__)
+#if PORT_RISCV_USE_IRQ_STACK
+#define PORT_INT_REQUIRED_STACK                                             \
+  (PORT_RISCV_IRQ_ARG_SIZE + PORT_RISCV_ISR_C_STACK_SIZE)
+#else
 #define PORT_INT_REQUIRED_STACK                                             \
   (PORT_RISCV_NESTING_LEVELS * (PORT_RISCV_EXTCTX_SIZE +                     \
                                 PORT_RISCV_IRQ_ARG_SIZE +                     \
                                 PORT_RISCV_ISR_C_STACK_SIZE))
 #endif
+#endif
 
 /**
- * @brief   Stack space reserved for the C code of an interrupt handler.
- * @note    The handler runs on the stack of the interrupted thread, the
- *          value is a safety margin on top of the interrupt frame itself.
+ * @brief   Stack space reserved on the interrupted thread stack.
+ * @note    With @p PORT_RISCV_USE_IRQ_STACK enabled this only covers the C
+ *          calls performed by the outermost interrupt exit and by the
+ *          context switch adapter; the handlers themselves and all nested
+ *          frames live in @p .istack. With the feature disabled it is the
+ *          per-nesting-level margin for the handler C stacks.
  */
 #if !defined(PORT_RISCV_ISR_C_STACK_SIZE) || defined(__DOXYGEN__)
+#if PORT_RISCV_USE_IRQ_STACK
+#define PORT_RISCV_ISR_C_STACK_SIZE       256U
+#else
 #define PORT_RISCV_ISR_C_STACK_SIZE       64U
+#endif
 #endif
 
 /**
@@ -560,6 +578,7 @@ void _port_switch(thread_t *ntp, thread_t *otp);
 void _port_exit_from_isr(void);
 void _port_thread_start(void);
 bool _port_irq_preempt_pending(void);
+uint32_t _port_irq_stack_switch_back(uint32_t sp, uint32_t irq_stack_top);
 #ifdef __cplusplus
 }
 #endif

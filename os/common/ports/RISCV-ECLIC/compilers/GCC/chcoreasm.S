@@ -213,16 +213,25 @@ _port_switch:
 /* --------------------------------------------------------------------------
  * ISR exit path.
  *
- * All the vector stubs tail-jump here after the C handler returned. The
- * frame of the interrupted thread is at the top of the stack.
+ * All the vector stubs tail-jump here after the C handler returned. With
+ * PORT_RISCV_USE_IRQ_STACK enabled the handler ran on .istack, so the
+ * outermost level has its frame on the interrupted thread stack (latched
+ * in mscratch) while sp points at __irq_stack_end__. Nested levels have
+ * both their frame and sp in .istack.
  *
- * If the handler requested a preemption, and this is the outermost
- * interrupt level, the exception return is redirected to the switch
- * adapter: the frame is left on the interrupted thread stack and the
- * adapter performs the context switch, then restores the frame and
- * returns to the interrupted point. This is the RISC-V equivalent of the
- * ARMv7-M "return to base" trick, it keeps the reschedule atomic with
- * respect to the interrupt exit.
+ * Nested levels simply restore their frame and mret back to the interrupted
+ * point; only the outermost level switches sp back to the thread frame and
+ * evaluates a pending preemption. This is the check the PFIC GISR nesting
+ * state is used for (see _port_irq_stack_switch_back() in chcore.c).
+ *
+ * If the handler requested a preemption, the exception return of the
+ * outermost level is redirected to the switch adapter: the frame stays on
+ * the interrupted thread stack and the adapter performs the context switch,
+ * then restores the frame and returns to the interrupted point. This is the
+ * RISC-V equivalent of the ARMv7-M "return to base" trick, it keeps the
+ * reschedule atomic with respect to the interrupt exit. Note that the
+ * second mret of this path is harmless: stacking is done in software, so
+ * no hardware prologue/epilogue is triggered by an exception return.
  *
  * Interrupts are disabled before the restore and stay disabled until mret
  * re-enables them from the saved mstatus.MPIE. The saved mstatus itself
@@ -237,6 +246,17 @@ _port_switch:
 _port_exit_from_isr:
     csrc    CSR_MSTATUS, MSTATUS_MIE
     fence   iorw, iorw
+
+#if PORT_RISCV_USE_IRQ_STACK
+    /* Only the outermost interrupt level reaches the common preemption
+       path. Nested levels keep sp in .istack and return straight away.
+       The helper also clears the mscratch sentinel on the way out. */
+    mv      a0, sp
+    la      a1, __irq_stack_end__
+    call    _port_irq_stack_switch_back
+    beqz    a0, _port_restore_from_isr
+    mv      sp, a0
+#endif
 
     /* Asking the port whether the interrupted thread must be preempted, the
        check needs the scheduler state and the interrupt nesting level. */

@@ -146,6 +146,12 @@ _crt0_entry:
     /* Initialize stack pointer sp */
     la sp, __process_stack_end__
 
+    /* mscratch is the interrupt-stack switch sentinel: zero while running in
+       thread mode, the interrupted thread's frame pointer while servicing an
+       interrupt (see PORT_IRQ_ENTRY in irq_stubs.h). It must start clear and
+       it must stay clear until the first trap is taken. */
+    csrw    CSR_MSCRATCH, zero
+
     /*
      * QingKe V5 core configuration (values from the WCH EVT startup,
      * see the QingKe V5 processor manual for field definitions).
@@ -224,7 +230,7 @@ endtextloop:
 
 #if CRT0_INIT_STACKS == TRUE
     li      a0, CRT0_STACKS_FILL_PATTERN
-    /* Main Stack initialization. Note, it assumes that the
+    /* Process stack initialization. Note, it assumes that the
         stack size is a multiple of 4 so the linker file must
         ensure this.*/
     la      a1, __process_stack_base__
@@ -235,6 +241,18 @@ psloop:
     addi    a1, a1, 4
     j       psloop
 endpsloop:
+
+    /* Independent interrupt stack initialization. Filling it with the same
+       pattern makes the worst-case ISR stack watermark measurable at run
+       time; the linker script guarantees a size multiple of 16. */
+    la      a1, __irq_stack_base__
+    la      a2, __irq_stack_end__
+isloop:
+    bge     a1, a2, endisloop
+    sw      a0, 0(a1)
+    addi    a1, a1, 4
+    j       isloop
+endisloop:
 #endif
 
 #if CRT0_INIT_DATA == TRUE

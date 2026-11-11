@@ -34,6 +34,13 @@ else
   LDOPT := $(LDOPT),--defsym=__process_stack_size__=$(USE_PROCESS_STACKSIZE)
 endif
 
+# Independent interrupt stack size (see PORT_RISCV_USE_IRQ_STACK)
+ifeq ($(USE_IRQ_STACKSIZE),)
+  LDOPT := $(LDOPT),--defsym=__irq_stack_size__=0x800
+else
+  LDOPT := $(LDOPT),--defsym=__irq_stack_size__=$(USE_IRQ_STACKSIZE)
+endif
+
 # Output directory and files
 ifeq ($(BUILDDIR),)
   BUILDDIR = build

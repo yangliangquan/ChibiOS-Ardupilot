@@ -128,6 +128,19 @@
 #endif
 
 /**
+ * @brief   Enables an independent interrupt stack.
+ * @details When enabled, only the outermost interrupt frame stays on the
+ *          interrupted thread stack; nested frames and the C call stack of
+ *          all the handlers run on the dedicated .istack region. mscratch
+ *          is used as the switch sentinel, so INTSYSCR.HWSTKEN must remain
+ *          cleared (software stacking). Set to 0 to fall back to the legacy
+ *          per-thread-stacks-only behaviour.
+ */
+#if !defined(PORT_RISCV_USE_IRQ_STACK)
+#define PORT_RISCV_USE_IRQ_STACK        1
+#endif
+
+/**
  * @brief   Number of interrupt preemption bits.
  * @note    Must match both CSR 0x804 PMTCFG and CSR 0xBC1 NEST_LVL written by
  *          crt0.S, and the per-thread interrupt stack reservation computed in

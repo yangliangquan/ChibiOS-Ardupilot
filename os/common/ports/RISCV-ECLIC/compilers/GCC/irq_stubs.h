@@ -36,15 +36,23 @@
  *          - the entry point clears mstatus.MIE and executes a memory
  *            barrier before reading mepc/mcause/mstatus, so the captured
  *            state is the one of the interrupted context.
- *          - the full interrupted context is then saved on the current
- *            thread stack (software stacking, per-thread stacks);
+ *          - the full interrupted context is saved on the current stack
+ *            (software stacking). For the outermost interrupt this is the
+ *            interrupted thread stack, for nested levels it is already the
+ *            independent interrupt stack;
+ *          - with PORT_RISCV_USE_IRQ_STACK enabled, the entry point then
+ *            switches sp to __irq_stack_end__ before invoking the C handler,
+ *            so nested frames and all handler call stacks live in .istack.
+ *            mscratch is zero in thread mode and holds the outermost frame
+ *            pointer while an interrupt is being serviced;
  *          - external IRQs re-enable MIE to allow priority nesting, the
  *            non-nesting variant (exceptions) keeps it cleared.
  *
  *          Interrupt exit is centralised in _port_exit_from_isr
- *          (chcoreasm.S): the frame is restored and mret returns to the
- *          interrupted point. If the handler requested a preemption, and
- *          this is the outermost interrupt level, the exception return is
+ *          (chcoreasm.S): nested levels restore their frame and mret
+ *          straight back, while the outermost level switches sp back to
+ *          the interrupted thread frame first. If the handler requested a
+ *          preemption, the exception return of that outermost level is
  *          redirected to the switch adapter which performs the context
  *          switch and then restores the frame.
  *
@@ -196,6 +204,22 @@
     /* The interrupted context is complete, the scratch register can be used
        to fetch the address of the handler from the argument area. */
     LOAD    t0, (EXTCTX_SIZE + PORT_RISCV_IRQ_ARG_HANDLER_OFF)
+#if PORT_RISCV_USE_IRQ_STACK
+    /* Switch to the independent interrupt stack. A single csrrw reads the
+       thread-mode sentinel and latches the current frame pointer; MIE is
+       already clear so the exchange cannot be interleaved with a trap.
+         outermost : t1 == 0 -> sp = __irq_stack_end__, mscratch = frame sp
+         nested    : t1 != 0 -> keep sp (already in .istack) and restore the
+                                mscratch value overwritten by csrrw.
+       t0 carries the handler address and must not be modified here. */
+    csrrw   t1, CSR_MSCRATCH, sp
+    bnez    t1, 880f
+    la      sp, __irq_stack_end__
+    j       881f
+880:
+    csrw    CSR_MSCRATCH, t1
+881:
+#endif
 .if \nest
     csrs    CSR_MSTATUS, MSTATUS_MIE
 .endif
