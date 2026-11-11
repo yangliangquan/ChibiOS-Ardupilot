@@ -99,6 +99,47 @@
 #if !defined(CH32H417_USB_LOW_SPEED) || defined(__DOXYGEN__)
 #define CH32H417_USB_LOW_SPEED             FALSE
 #endif
+
+/**
+ * @brief   Enables BASE_CTRL.UC_INT_BUSY.
+ * @details Every WCH USBFS device example (EVT USBFS_RCC_Init()/
+ *          USBFS_Device_Init(), CherryUSB, Hurra) sets this bit together
+ *          with DEV_PU_EN and DMA_EN. It makes the SIE answer NAK to all
+ *          IN/OUT tokens while an INT_FG flag is pending, which protects
+ *          the endpoint DMA buffers until the handler has armed the next
+ *          data stage and clears the flag at its end.
+ *
+ *          This switch is only half of the mechanism: it REQUIRES the
+ *          matching hal_usb_lld.c whose ISR clears INT_FG at the END of
+ *          the handler. An ISR that clears INT_FG on entry releases the
+ *          global NAK immediately and turns this bit into a source of
+ *          lost/duplicated transfer events. Always update the .c and the
+ *          .h together. Set to FALSE only to experiment with the
+ *          no-INT_BUSY behaviour.
+ */
+#if !defined(CH32H417_USB_INT_BUSY) || defined(__DOXYGEN__)
+#define CH32H417_USB_INT_BUSY              TRUE
+#endif
+
+/**
+ * @brief   Emulates the missing device SOF interrupt with a virtual timer.
+ * @details This controller has no device-side SOF flag, but the SerialUSB
+ *          driver relies on sof_cb() being called periodically to flush a
+ *          partially filled output queue.  When enabled the LLD invokes
+ *          USBConfig::sof_cb from a virtual timer callback at the period
+ *          below, starting at usb_lld_start().  As with a real SOF ISR,
+ *          the callback takes the kernel lock itself.
+ */
+#if !defined(CH32H417_USB_SOF_EMULATION) || defined(__DOXYGEN__)
+#define CH32H417_USB_SOF_EMULATION         TRUE
+#endif
+
+/**
+ * @brief   Period of the emulated SOF callback, in milliseconds.
+ */
+#if !defined(CH32H417_USB_SOF_PERIOD_MS) || defined(__DOXYGEN__)
+#define CH32H417_USB_SOF_PERIOD_MS         1U
+#endif
 /** @} */
 
 /*===========================================================================*/
@@ -283,7 +324,11 @@ typedef struct {
   usbreqhandler_t                 requests_hook_cb;
   /**
    * @brief   Start Of Frame callback.
-   * @details Never invoked by this driver (no device-side SOF flag).
+   * @details There is no device-side SOF flag on this controller.  With
+   *          CH32H417_USB_SOF_EMULATION enabled this is invoked at a
+   *          fixed period from a virtual timer callback instead, in the
+   *          same unlocked context as a real SOF ISR: implementations
+   *          must take the kernel lock for I-class operations.
    */
   usbcallback_t                   sof_cb;
   /* End of the mandatory fields.*/

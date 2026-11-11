@@ -24,15 +24,35 @@
  *          Endpoint zero manages DATA toggles manually (AUTO_TOG is
  *          reserved on EP0), other groups use AUTO_TOG.
  *
+ *          Each non-zero endpoint has a single UEPn_DMA address and its
+ *          DMA path is one-way, so a group serves either IN or OUT, never
+ *          both.  Both directions therefore use the buffer base and no
+ *          +64 TX half exists.  The application must allocate distinct
+ *          endpoint numbers for the CDC bulk IN, bulk OUT and interrupt
+ *          IN pipes.
+ *
+ *          There is no device SOF interrupt.  USBConfig::sof_cb is driven
+ *          from a 1ms virtual timer (CH32H417_USB_SOF_EMULATION) so the
+ *          SerialUSB output queue still gets its periodic flush.
+ *
  * @note    A setup packet is delivered by the controller at the beginning
  *          of the EP0 DMA buffer, the very same place where the data
  *          stage of the control transfer is assembled: the setup packet
  *          has to be copied out before the data stage overwrites it.
  *
- * @note    The interrupt flags are cleared at the end of the handler.
- *          RB_UC_INT_BUSY keeps the controller answering NAK while
- *          RB_UIF_TRANSFER is still set, this way the endpoint buffers
- *          cannot be overwritten while they are being processed.
+ * @note    INT_FG is cleared at the END of the handler with the flags
+ *          present on entry, exactly as the vendor USBFS_RCC_Init()/
+ *          USBFS_IRQHandler examples do. RB_UC_INT_BUSY makes the SIE
+ *          answer NAK to every IN/OUT token while an INT_FG flag is
+ *          pending; that is the intended protection for the endpoint
+ *          DMA buffers while the handler prepares the next data stage.
+ *          A flag raised during the handler is deliberately left set so
+ *          the interrupt re-enters and services it.
+ *
+ * @note    On the dual core part an IRQ id > 31 is claimed by the first
+ *          core that enables it (PFIC.IALLOCR[] latches the owner), so
+ *          this driver must not write IALLOCR up front: NVIC_EnableIRQ()
+ *          from the V5F image is what claims USBFS_IRQn for V5F.
  *
  * @addtogroup USB
  * @{
@@ -73,12 +93,23 @@
 #define UMS_SUSPEND         (1U << 2)
 
 /* R8_USB_INT_ST fields (RM 26.2.1.6). */
+#define UIS_IS_NAK          (1U << 7)
 #define UIS_TOKEN_MASK      (3U << 4)
 #define UIS_TOKEN_OUT       0U
+#define UIS_TOKEN_SOF       1U
 #define UIS_TOKEN_IN        2U
 #define UIS_TOKEN_SETUP     3U
 #define UIS_ENDP_MASK       0x0FU
 #define UIS_TOG_OK          (1U << 6)
+
+/* INT_FG bits that are real interrupt flags (write one to clear). Bits
+   5..7 are read-only live status, they must never be written back.
+   Bit 3 is the host SOF flag, unused in device mode. The ISR clears
+   (entry snapshot & UIF_CLEARABLE), so a flag raised while the handler
+   runs stays pending and gets serviced on re-entry (vendor behaviour). */
+#define UIF_HST_SOF         (1U << 3)
+#define UIF_CLEARABLE       (UIF_BUS_RST | UIF_TRANSFER |                  \
+                             UIF_SUSPEND | UIF_HST_SOF | UIF_FIFO_OV)
 
 /* UEPn_TX_CTRL / UEPn_RX_CTRL fields (RM 26.2.2.9/26.2.2.10). */
 #define UEP_RES_MASK        0x03U
@@ -132,12 +163,17 @@ static union {
 
 /**
  * @brief   USB data buffers.
- * @note    The USBFS DMA engine can only reach the shared SRAM,
- *          not the core-own DTCM (RM ch26 RB_DMA_EN: "可访问 SRAM 中
- *          数据") and its address registers only retain the 2MB RAM
- *          window offset bits, so buffers must live in .ram2
- *          (SRAM, 0x20120000+) or the DMA writes go to an unmapped
- *          address and raise a bus error NMI at the CPU.
+ * @note    R32_UEPn_DMA keeps a 24 bit offset (mask 0xFFFFFF) that the
+ *          controller adds to 0x20000000: the vendor
+ *          USBFSD_UEP_BUF(n) macro is exactly
+ *          ((uint8_t *)UEPn_DMA(n) + 0x20000000). Writing the absolute
+ *          address of a buffer in the 0x20000000..0x20FFFFFF window
+ *          therefore works, the 0x20 prefix is discarded by the mask.
+ *          The official EVT link script places its endpoint buffers in
+ *          plain .bss in DTCM (0x200C0200+), so DTCM is reachable too;
+ *          .ram2 (flashram, 0x20120000+) is used here to keep the DMA
+ *          traffic away from the core-own DTCM data. A buffer outside
+ *          that 16MB window would be truncated and cause a bus error.
  * @note    The EP0 buffer holds the setup packet at its beginning and
  *          the data stage of the control transfer right after, it must
  *          be large enough for the largest packet plus the two bytes
@@ -146,7 +182,8 @@ static union {
 static uint8_t epbuf0[72] __attribute__((section(".ram2"), aligned(4)));
 
 /**
- * @brief   Per-group buffers (single 64+64 layout plus slack).
+ * @brief   Per-group buffers (64 bytes plus slack).
+ * @note    One-way DMA means a group never needs a separate +64 TX half.
  */
 static uint8_t epbuf1[136] __attribute__((section(".ram2"), aligned(4)));
 static uint8_t epbuf2[136] __attribute__((section(".ram2"), aligned(4)));
@@ -177,7 +214,8 @@ static uint8_t *const group_buf[USBFS_GROUPS] = {
   epbuf0, epbuf1, epbuf2, epbuf3, epbuf4, epbuf5, epbuf6, epbuf7
 };
 
-/* Which directions are enabled in each group (layout bookkeeping). */
+/* Which directions are enabled in each group. Layout bookkeeping, also
+   handy in the debugger; the buffer address no longer depends on them. */
 static bool group_rx[USBFS_GROUPS];
 static bool group_tx[USBFS_GROUPS];
 
@@ -185,18 +223,34 @@ static bool group_tx[USBFS_GROUPS];
 /* Driver local functions.                                                   */
 /*===========================================================================*/
 
+#if (CH32H417_USB_SOF_EMULATION == TRUE) || defined(__DOXYGEN__)
 /**
- * @brief   Endpoint address to endpoint number map.
- * @note    The transfer interrupt reports the endpoint address, the field
- *          is four bits wide (RM 26.2.1.6, MASK_UIS_ENDP), and the
- *          addresses 8..15 are aliases of the addresses 0..7 that share
- *          their buffer (RM 26.2.2.2: "端点 1 配置选项映射端点 9，端点 4
- *          配置选项映射端点 8 和 12", RM 26.2.2.3: "端点 2 配置选项映射
- *          端点 10，端点 3 配置选项映射端点 11", RM 26.2.2.4: "端点 5 配置
- *          选项映射端点 13，端点 6 配置选项映射端点 14", RM 26.2.2.5: "端点
- *          7 配置选项映射端点 15"). The table folds an address onto the
- *          endpoint it is mapped to.
+ * @brief   Virtual timer standing in for the missing device SOF interrupt.
  */
+static virtual_timer_t sof_timer;
+
+/**
+ * @brief   Periodic SOF substitute.
+ * @details chVTDoTickI() invokes callbacks with the kernel unlocked, so
+ *          re-arming (an I-class operation) needs its own critical
+ *          section. The callback is re-armed before the hook so a slow
+ *          hook cannot stop the tick. USBConfig::sof_cb is left in the
+ *          same context as a real SOF ISR: it takes the lock itself.
+ */
+static void sof_timer_cb(virtual_timer_t *vtp, void *p) {
+  USBDriver *usbp = (USBDriver *)p;
+
+  chSysLockFromISR();
+  chVTSetI(vtp, TIME_MS2I(CH32H417_USB_SOF_PERIOD_MS),
+           sof_timer_cb, p);
+  chSysUnlockFromISR();
+
+  if ((usbp->config != NULL) && (usbp->config->sof_cb != NULL)) {
+    usbp->config->sof_cb(usbp);
+  }
+}
+#endif
+
 static const uint8_t ep_addr_map[16] = {
   0, 1, 2, 3, 4, 5, 6, 7, 4, 1, 2, 3, 4, 5, 6, 7
 };
@@ -270,15 +324,14 @@ static inline uint8_t *group_rx_ptr(unsigned g) {
 }
 
 /**
- * @brief   Transmit area of a group: at +64 when the group has both
- *          directions enabled, at the base otherwise (RM table 26-4),
- *          EP0 shares the single buffer.
+ * @brief   Transmit area of a group.
+ * @note    The DMA path is one-way, a non-zero group is never enabled in
+ *          both directions, so there is no +64 TX half: TX and RX both
+ *          start at the buffer base. EP0 shares that buffer with the
+ *          setup packet, which is copied out before the data stage.
  */
 static inline uint8_t *group_tx_ptr(unsigned g) {
 
-  if ((g == 0U) || (group_rx[g] && group_tx[g])) {
-    return group_buf[g] + ((g == 0U) ? 0U : 64U);
-  }
   return group_buf[g];
 }
 
@@ -385,11 +438,18 @@ static void usb_serve_transfer(USBDriver *usbp, uint32_t ist, uint32_t rxlen) {
   unsigned ep;
   unsigned g;
 
-  /* The interrupt reports the endpoint address and not the group, the
-     alias addresses 8..15 are folded onto the endpoint they share their
-     buffer with, so that the configuration lookup and the callbacks use
-     the endpoint number of the application (RM 26.2.1.6 and RM 26.2.2.2
-     to RM 26.2.2.5). */
+  if (token == UIS_TOKEN_SOF) {
+    return;
+  }
+
+  if (token == UIS_TOKEN_SETUP) {
+    *uep_tx_ctrl(0) = (uint8_t)(UEP_RES_NAK | UEP_TOG);
+    *uep_rx_ctrl(0) = (uint8_t)(UEP_RES_NAK | UEP_TOG);
+
+    _usb_isr_invoke_setup_cb(usbp, (usbep_t)0U);
+    return;
+  }
+
   ep = ep_group((usbep_t)addr);
 
   epcp = usbp->epc[ep];
@@ -398,18 +458,6 @@ static void usb_serve_transfer(USBDriver *usbp, uint32_t ist, uint32_t rxlen) {
   }
 
   g = ep;
-
-  if (token == UIS_TOKEN_SETUP) {
-    /* The controller delivered the setup packet at the beginning of the
-       EP0 buffer, it is copied out by the setup callback before the
-       data stage overwrites that place. The data toggles restart from
-       DATA1 on both directions after a setup packet. */
-    *uep_tx_ctrl(0) = (uint8_t)(UEP_RES_NAK | UEP_TOG);
-    *uep_rx_ctrl(0) = (uint8_t)(UEP_RES_NAK | UEP_TOG);
-
-    _usb_isr_invoke_setup_cb(usbp, (usbep_t)ep);
-    return;
-  }
 
   if (token == UIS_TOKEN_IN) {
     USBInEndpointState *isp = epcp->in_state;
@@ -553,12 +601,7 @@ OSAL_IRQ_HANDLER(USBFS_IRQHandler) {
     }
   }
 
-  /* The flags are cleared at the end of the handler: while
-     RB_UIF_TRANSFER is still set the controller answers NAK
-     (RB_UC_INT_BUSY), so the endpoint buffers cannot be overwritten
-     while they are being processed. */
-  USBFSD->INT_FG = (uint8_t)(fg & (UIF_BUS_RST | UIF_TRANSFER |
-                                   UIF_SUSPEND | UIF_FIFO_OV));
+  USBFSD->INT_FG = (uint8_t)(fg & UIF_CLEARABLE);
 
   OSAL_IRQ_EPILOGUE();
 }
@@ -591,13 +634,6 @@ void usb_lld_start(USBDriver *usbp) {
   unsigned i;
 
   if (usbp->state == USB_STOP) {
-    /* 48MHz clock chain, same sequence as the vendor USBFS_RCC_Init():
-       the USBHS PLL (480MHz) is programmed (source, reference frequency
-       and input divider) and only then enabled, the USBFS 48MHz entry
-       takes it divided by ten. Enabling the PLL without programming it
-       leaves the SIE on a wrong clock: the protocol engine then samples
-       the bus badly, the received length register returns garbage and
-       the DMA writes to wrong addresses. */
 #if CH32H417_USB_SETUP_USBHSPLL
     if ((RCC->PLLCFGR & RCC_SYSPLL_SEL) != RCC_SYSPLL_USBHS) {
       RCC_USBHS_PLLCmd(DISABLE);
@@ -614,8 +650,8 @@ void usb_lld_start(USBDriver *usbp) {
     RCC_USBFS48ClockSourceDivConfig(CH32H417_USBFS_CLK_DIV);
     CH32H417_DSB();
 
-    /* Peripheral clock (HBPCENR.OTGFSEN/RCC_USBOTGEN). */
-    RCC->HBPCENR |= RCC_USBOTGEN;
+    RCC->HBPCENR  |= RCC_USBOTGEN;
+    RCC->HB2PCENR |= RCC_HB2Periph_GPIOA;
     /* Order the gate commit before the first USBFSD register access. */
     CH32H417_DSB();
 
@@ -629,11 +665,11 @@ void usb_lld_start(USBDriver *usbp) {
     (void)dummy;
     USBFSD->BASE_CTRL = 0U;
 
-    /* Device mode: the packet buffers are DMA driven and the busy bit
-       makes the SIE answer NAK while a transfer event is pending, the
-       vendor device examples always set both. Without DMA enabled the
-       endpoints never complete a transfer. */
-    USBFSD->BASE_CTRL = (uint8_t)(UC_DMA_EN | UC_INT_BUSY);
+    USBFSD->BASE_CTRL = (uint8_t)(UC_DMA_EN |
+#if CH32H417_USB_INT_BUSY
+                                   UC_INT_BUSY |
+#endif
+                                   0U);
 
     /* Device physical port: full/low speed, internal pull-down
        disabled (device uses the SYS_CTRL pull-up), port enabled,
@@ -647,10 +683,15 @@ void usb_lld_start(USBDriver *usbp) {
     /* Bus reset, transfer and suspend sources. */
     USBFSD->INT_EN = UIF_BUS_RST | UIF_TRANSFER | UIF_SUSPEND;
 
+    usb_lld_reset(usbp);
+
     NVIC_EnableIRQ(USBFS_IRQn);
 
-    /* Device state initialization. */
-    usb_lld_reset(usbp);
+#if (CH32H417_USB_SOF_EMULATION == TRUE)
+    chVTObjectInit(&sof_timer);
+    chVTSetI(&sof_timer, TIME_MS2I(CH32H417_USB_SOF_PERIOD_MS),
+             sof_timer_cb, (void *)usbp);
+#endif
   }
 }
 
@@ -662,6 +703,9 @@ void usb_lld_start(USBDriver *usbp) {
 void usb_lld_stop(USBDriver *usbp) {
 
   if (usbp->state != USB_STOP) {
+#if (CH32H417_USB_SOF_EMULATION == TRUE)
+    chVTResetI(&sof_timer);
+#endif
     NVIC_DisableIRQ(USBFS_IRQn);
 
     RCC->HBPCENR &= ~RCC_USBOTGEN;
@@ -686,11 +730,6 @@ void usb_lld_reset(USBDriver *usbp) {
   /* Device address zero. */
   USBFSD->DEV_ADDR = 0U;
 
-  /* Drop the pending events, the transfers in flight are gone. */
-  USBFSD->INT_FG = 0xFFU;
-  /* The clear must be committed before the endpoints are re-armed. */
-  CH32H417_DSB();
-
   /* Park all the endpoints but the zero, they are enabled again by the
      configuration callback. */
   for (i = 1U; i < USBFS_GROUPS; i++) {
@@ -713,7 +752,8 @@ void usb_lld_reset(USBDriver *usbp) {
  */
 void usb_lld_set_address(USBDriver *usbp) {
 
-  USBFSD->DEV_ADDR = usbp->address & 0x7FU;
+  USBFSD->DEV_ADDR = (uint8_t)((USBFSD->DEV_ADDR & 0x80U) |
+                               (usbp->address & 0x7FU));
 }
 
 /**
@@ -735,13 +775,15 @@ void usb_lld_init_endpoint(USBDriver *usbp, usbep_t ep) {
   rx = epcp->out_state != NULL;
   tx = epcp->in_state != NULL;
 
-  /* EP0: single shared 64 byte buffer, no MOD register. */
+  osalDbgAssert((g == 0U) || !(rx && tx),
+                "endpoint configured in both directions");
+
   if (g == 0U) {
     group_rx[0] = true;
     group_tx[0] = true;
     *uep_dma(0) = (uint32_t)epbuf0;
     *uep_tx_ctrl(0) = UEP_RES_NAK;
-    *uep_rx_ctrl(0) = UEP_RES_NAK;
+    *uep_rx_ctrl(0) = UEP_RES_ACK;
     return;
   }
 
@@ -833,9 +875,6 @@ void usb_lld_start_out(USBDriver *usbp, usbep_t ep) {
   unsigned g;
   volatile uint8_t *ctrl;
 
-  /* The generic layer looks the endpoint up without any protection (the
-     check it does is compiled out in a release build), an endpoint that
-     was never registered would be a wild pointer dereference. */
   if ((ep > (unsigned)USB_MAX_ENDPOINTS) || (usbp->epc[ep] == NULL)) {
     return;
   }
@@ -871,9 +910,6 @@ void usb_lld_start_in(USBDriver *usbp, usbep_t ep) {
   unsigned g;
   volatile uint8_t *ctrl;
 
-  /* The generic layer looks the endpoint up without any protection (the
-     check it does is compiled out in a release build), an endpoint that
-     was never registered would be a wild pointer dereference. */
   if ((ep > (unsigned)USB_MAX_ENDPOINTS) || (usbp->epc[ep] == NULL)) {
     return;
   }
