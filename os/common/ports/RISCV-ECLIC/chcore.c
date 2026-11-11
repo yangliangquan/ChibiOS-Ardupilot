@@ -54,9 +54,8 @@ _Static_assert(offsetof(thread_t, ctx) == PORT_CONTEXT_OFFSET,
 
 /**
  * @brief   Reschedule request flag.
- * @details Set by @p PORT_IRQ_EPILOGUE() when a higher priority thread is
- *          ready, consumed by the interrupt exit path which performs the
- *          context switch.
+ * @details Set by @p PORT_IRQ_EPILOGUE(), consumed by the interrupt exit path
+ *          which performs the context switch.
  */
 volatile bool port_preempt_pending;
 
@@ -66,12 +65,8 @@ volatile bool port_preempt_pending;
 
 /**
  * @brief   Evaluates if the interrupted thread must be preempted.
- * @details Called from the interrupt exit path, the function returns TRUE
- *          only if a reschedule has been requested and the core is at the
- *          outermost interrupt level.
- * @note    Deeper interrupt levels do not perform the switch, the request
- *          is left pending for the outermost level, this is the equivalent
- *          of the ARMv7-M "return to base" condition.
+ * @details Only the outermost interrupt level performs the switch, deeper
+ *          levels leave the request pending.
  *
  * @return              The preemption state.
  * @retval true         a context switch must be performed.
@@ -82,9 +77,8 @@ volatile bool port_preempt_pending;
 bool _port_irq_preempt_pending(void) {
 
 #if CH_DBG_ENABLE_ASSERTS
-  /* An overflow of the interrupt nesting levels is a fatal condition: the
-     hardware cannot exit from the exception that detected it (QingKe V5
-     processor manual, CSR 0xBC1 NEST_OV). */
+  /* Fatal condition: the hardware cannot exit from the exception that
+     detected it (QingKe V5 manual, CSR 0xBC1 NEST_OV). */
   chDbgAssert(port_isr_nesting_overflow() == false, "interrupt nesting overflow");
 #endif
 
@@ -93,8 +87,6 @@ bool _port_irq_preempt_pending(void) {
   }
 
   if (port_isr_nesting_level() > 1U) {
-    /* A nested interrupt level, the switch is performed by the outermost
-       level, the request is left pending. */
     return false;
   }
 
@@ -106,9 +98,8 @@ bool _port_irq_preempt_pending(void) {
 /**
  * @brief   Brings the stack pointer back to the interrupted thread frame on
  *          interrupt exit.
- * @details Only the outermost interrupt level is allowed to leave the
- *          independent interrupt stack. Nested levels return zero and the
- *          caller restores their frame and executes mret immediately.
+ * @details Only the level owning the frame latched in mscratch may leave the
+ *          independent interrupt stack, every other level returns zero.
  *
  * @param[in] sp            stack pointer on return from the C handler
  * @param[in] irq_stack_top top of the independent interrupt stack
@@ -121,28 +112,30 @@ uint32_t _port_irq_stack_switch_back(uint32_t sp, uint32_t irq_stack_top) {
   uint32_t frame_sp;
 
 #if CH_DBG_ENABLE_ASSERTS
-  /* An overflow of the interrupt nesting levels is a fatal condition: the
-     hardware cannot exit from the exception that detected it (QingKe V5
-     processor manual, CSR 0xBC1 NEST_OV). */
   chDbgAssert(port_isr_nesting_overflow() == false, "interrupt nesting overflow");
   chDbgAssert(sp >= (uint32_t)__irq_stack_base__, "ISR stack overflow");
+  chDbgAssert(sp <= irq_stack_top, "sp above the ISR stack");
 #endif
 
-  /* PFIC GISR.NESTSTA is the authoritative nesting state for ECLIC
-     interrupts: a value above one means this is not the outermost level.
-     The sp comparison additionally covers synchronous exceptions taken
-     while an ISR is running, those are not accounted for by the PFIC and
-     must not switch the stack back either. */
-  if ((port_isr_nesting_level() > 1U) || (sp != irq_stack_top)) {
+  /* The frame owner is identified by sp alone: PORT_IRQ_ENTRY points sp at
+     the top of the interrupt stack only for the level that latched a frame
+     in mscratch.
+     GISR.NESTSTA must not be used here, the core dispatches an interrupt
+     before the first instruction of its vector stub, so a level that owns no
+     frame already counts in NESTSTA. Treating it as nested restored a frame
+     from the stack top, which is the first word of .data. */
+  if (sp != irq_stack_top) {
     return 0U;
   }
 
-  /* Outermost level: mscratch holds the frame pointer latched by
-     PORT_IRQ_ENTRY. Reading it and writing back the thread-mode zero
-     sentinel is a single operation, so no trap can observe an intermediate
-     state (MIE is clear at this point). */
+  /* Outermost level: mscratch holds the frame pointer of PORT_IRQ_ENTRY, the
+     swap also restores the thread-mode zero sentinel. */
   __asm__ volatile ("csrrw %0, %1, zero"
                     : "=r" (frame_sp) : "i" (CSR_MSCRATCH));
+
+  if (frame_sp == 0U) {
+    chSysHalt("ISR stack desync");
+  }
 
   return frame_sp;
 }
