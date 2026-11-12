@@ -24,7 +24,9 @@
  * @details Every cycle proves the read path with an indirect quad read
  *          compared against the memory mapped window, then the write path
  *          with a full write and read back verification of the scratch
- *          sector. Nothing outside the scratch sector is touched.
+ *          sector: the sector is programmed on four lines (0x32) and read
+ *          back in one quad frame. Nothing outside the scratch sector is
+ *          touched.
  */
 
 #include "board.h"
@@ -70,6 +72,9 @@
 #define WSPI_SR_WIP 0x01U
 #define WSPI_SR_WEL 0x02U
 
+/* Status register 2, the quad enable bit gates the four-line commands. */
+#define WSPI_SR2_QE 0x02U
+
 /*===========================================================================*/
 /* Module local data.                                                        */
 /*===========================================================================*/
@@ -110,6 +115,25 @@ static const wspi_command_t cmd_rdsr = {
   .dummy = 0U
 };
 
+/* Status register 2, read and write frames, both single byte. */
+static const wspi_command_t cmd_rdsr2 = {
+  .cfg = WSPI_CFG_CMD_MODE_ONE_LINE | WSPI_CFG_ADDR_MODE_NONE |
+         WSPI_CFG_ALT_MODE_NONE | WSPI_CFG_DATA_MODE_ONE_LINE,
+  .cmd = 0x35U,
+  .addr = 0U,
+  .alt = 0U,
+  .dummy = 0U
+};
+
+static const wspi_command_t cmd_wrsr2 = {
+  .cfg = WSPI_CFG_CMD_MODE_ONE_LINE | WSPI_CFG_ADDR_MODE_NONE |
+         WSPI_CFG_ALT_MODE_NONE | WSPI_CFG_DATA_MODE_ONE_LINE,
+  .cmd = 0x31U,
+  .addr = 0U,
+  .alt = 0U,
+  .dummy = 0U
+};
+
 /* Write enable, command only: no address, no data. It must precede every
    erase and program, the device consumes WEL on each of them. */
 static const wspi_command_t cmd_wren = {
@@ -131,10 +155,11 @@ static const wspi_command_t cmd_serase = {
   .dummy = 0U
 };
 
-static const wspi_command_t cmd_ppage = {
+/* 0x32, quad page program: data on four lines, requires the device QE bit. */
+static const wspi_command_t cmd_ppage_quad = {
   .cfg = WSPI_CFG_CMD_MODE_ONE_LINE | WSPI_CFG_ADDR_MODE_ONE_LINE |
-         WSPI_CFG_ADDR_SIZE_24 | WSPI_CFG_DATA_MODE_ONE_LINE,
-  .cmd = 0x02U,                            /* Page program.            */
+         WSPI_CFG_ADDR_SIZE_24 | WSPI_CFG_DATA_MODE_FOUR_LINES,
+  .cmd = 0x32U,                            /* Quad page program.       */
   .addr = 0U,
   .alt = 0U,
   .dummy = 0U
@@ -162,6 +187,7 @@ static const wspi_command_t cmd_quad_read = {
  */
 typedef enum {
   WSPI_FLOW_OK = 0,         /**< Sector programmed and verified.        */
+  WSPI_FLOW_QE,             /**< Device quad enable could not be set.   */
   WSPI_FLOW_WREN,           /**< Device did not accept the write enable. */
   WSPI_FLOW_ERASE,          /**< Sector erase frame failed.             */
   WSPI_FLOW_PROGRAM,        /**< Page program frame failed.             */
@@ -177,6 +203,9 @@ typedef struct {
   uint32_t   offset;        /**< Sector relative offset of the failure. */
   uint8_t    expected;      /**< Pattern byte, mismatch only.           */
   uint8_t    actual;        /**< Byte read back, mismatch only.         */
+  uint32_t   erase_us;      /**< Device busy time of the erase.         */
+  uint32_t   program_us;    /**< Time spent programming the sector.     */
+  uint32_t   verify_us;     /**< Time spent reading the sector back.    */
 } wspi_flow_status_t;
 
 /*===========================================================================*/
@@ -284,6 +313,8 @@ static uint8_t wspi_pattern(uint32_t addr, unsigned i) {
 static const char *wspi_flow_name(wspi_flow_result_t res) {
 
   switch (res) {
+  case WSPI_FLOW_QE:
+    return "quad enable";
   case WSPI_FLOW_WREN:
     return "write enable";
   case WSPI_FLOW_ERASE:
@@ -302,6 +333,40 @@ static const char *wspi_flow_name(wspi_flow_result_t res) {
 }
 
 /**
+ * @brief   Makes sure the device quad enable bit is set.
+ * @details The four-line program and read commands only work with QE set.
+ *          The W25Q64JV ships with the bit programmed, the rewrite is for
+ *          parts that do not.
+ *
+ * @param[in] wspip     pointer to the driver instance
+ * @param[in] chp       console stream for the status report
+ * @return              true when QE is set.
+ */
+static bool wspi_ensure_qe(WSPIDriver *wspip, BaseSequentialStream *chp) {
+  uint8_t sr2;
+
+  if (wspiReceive(wspip, &cmd_rdsr2, 1U, &sr2)) {
+    return false;
+  }
+  chprintf(chp, "WSPI: sr2 = %02x\r\n", (unsigned)sr2);
+
+  if ((sr2 & WSPI_SR2_QE) != 0U) {
+    return true;
+  }
+
+  /* WREN, then SR2 rewritten with QE forced on. */
+  sr2 |= WSPI_SR2_QE;
+  if (!wspi_write_enable(wspip)) {
+    return false;
+  }
+  if (wspiSend(wspip, &cmd_wrsr2, 1U, &sr2)) {
+    return false;
+  }
+
+  return wspi_wait_wip(wspip, &cmd_rdsr, 0U);
+}
+
+/**
  * @brief   Writes the scratch sector and reads it back.
  * @details Erases the sector, programs every page with the address
  *          dependent pattern and compares the whole sector read back. Each
@@ -316,18 +381,28 @@ static wspi_flow_result_t wspi_write_verify(WSPIDriver *wspip,
                                             BaseSequentialStream *chp,
                                             wspi_flow_status_t *stp) {
   uint32_t base = WSPI_TEST_SCRATCH_SECTOR;
+  systime_t t0;
   unsigned p;
   unsigned i;
 
   stp->offset = 0U;
   stp->expected = 0U;
   stp->actual = 0U;
+  stp->erase_us = 0U;
+  stp->program_us = 0U;
+  stp->verify_us = 0U;
+
+  /* QE gates every four-line command, the program below runs on four. */
+  if (!wspi_ensure_qe(wspip, chp)) {
+    return WSPI_FLOW_QE;
+  }
 
   /* Erase, a cell can only be programmed onto an erased page. */
   chprintf(chp, "WSPI: erase\r\n");
   if (!wspi_write_enable(wspip)) {
     return WSPI_FLOW_WREN;
   }
+  t0 = chVTGetSystemTime();
   {
     wspi_command_t cmd = cmd_serase;
 
@@ -339,14 +414,25 @@ static wspi_flow_result_t wspi_write_verify(WSPIDriver *wspip,
   if (!wspi_wait_wip(wspip, &cmd_rdsr, WSPI_TEST_ERASE_MIN_MS)) {
     return WSPI_FLOW_TIMEOUT;
   }
+  /* The guaranteed-busy skip is subtracted so the report states the device
+     erase time, not the polling strategy. */
+  stp->erase_us = (uint32_t)chTimeI2US(chVTTimeElapsedSinceX(t0));
+  if (stp->erase_us > (WSPI_TEST_ERASE_MIN_MS * 1000U)) {
+    stp->erase_us -= WSPI_TEST_ERASE_MIN_MS * 1000U;
+  }
+  else {
+    stp->erase_us = 0U;
+  }
 
-  /* Program page by page, with the write enable reissued per page. */
-  chprintf(chp, "WSPI: program");
+  /* Program page by page on four lines, with the write enable reissued per
+     page. No per-page console output here, the blocking UART would dwarf
+     the bus time. */
+  chprintf(chp, "WSPI: program\r\n");
+  t0 = chVTGetSystemTime();
   for (p = 0U; p < WSPI_TEST_SECTOR_PAGES; p++) {
     uint32_t paddr = base + (p * WSPI_TEST_PAGE_SIZE);
-    wspi_command_t cmd = cmd_ppage;
+    wspi_command_t cmd = cmd_ppage_quad;
 
-    chprintf(chp, " %u", (unsigned)p);
     for (i = 0U; i < WSPI_TEST_PAGE_SIZE; i++) {
       wspi_wbuf[i] = wspi_pattern(paddr, i);
     }
@@ -364,10 +450,12 @@ static wspi_flow_result_t wspi_write_verify(WSPIDriver *wspip,
       return WSPI_FLOW_TIMEOUT;
     }
   }
+  stp->program_us = (uint32_t)chTimeI2US(chVTTimeElapsedSinceX(t0));
 
   /* Read the whole sector back in one quad frame and compare it byte by
      byte, the flash auto increments the address inside the frame. */
-  chprintf(chp, "\r\nWSPI: verify\r\n");
+  chprintf(chp, "WSPI: verify\r\n");
+  t0 = chVTGetSystemTime();
   {
     wspi_command_t cmd = cmd_quad_read;
 
@@ -391,6 +479,7 @@ static wspi_flow_result_t wspi_write_verify(WSPIDriver *wspip,
       }
     }
   }
+  stp->verify_us = (uint32_t)chTimeI2US(chVTTimeElapsedSinceX(t0));
 
   return WSPI_FLOW_OK;
 }
@@ -502,11 +591,27 @@ static THD_FUNCTION(wspi_test_thd, arg) {
         res = wspi_write_verify(&WSPID2, chp, &st);
 
         if (res == WSPI_FLOW_OK) {
+          uint32_t p_us = (st.program_us == 0U) ? 100U : st.program_us;
+          uint32_t v_us = (st.verify_us == 0U) ? 100U : st.verify_us;
+          uint64_t p_rate = ((uint64_t)WSPI_TEST_SECTOR_SIZE * 1000000ULL) /
+                            p_us;
+          uint64_t v_rate = ((uint64_t)WSPI_TEST_SECTOR_SIZE * 1000000ULL) /
+                            v_us;
+
           chprintf(chp, "WSPI: write/verify PASS, sector 0x%06x, %u bytes "
                         "in %u pages\r\n",
                    (unsigned)WSPI_TEST_SCRATCH_SECTOR,
                    (unsigned)WSPI_TEST_SECTOR_SIZE,
                    (unsigned)WSPI_TEST_SECTOR_PAGES);
+          chprintf(chp, "WSPI: erase %u ms, program %u.%u ms, read %u.%u ms"
+                        "\r\n",
+                   (unsigned)(st.erase_us / 1000U),
+                   (unsigned)(st.program_us / 1000U),
+                   (unsigned)((st.program_us % 1000U) / 100U),
+                   (unsigned)(st.verify_us / 1000U),
+                   (unsigned)((st.verify_us % 1000U) / 100U));
+          chprintf(chp, "WSPI: program %u kB/s, read %u kB/s\r\n",
+                   (unsigned)p_rate, (unsigned)v_rate);
         }
         else if (res == WSPI_FLOW_MISMATCH) {
           chprintf(chp, "WSPI: verify MISMATCH at +0x%03x, wrote %02x, "

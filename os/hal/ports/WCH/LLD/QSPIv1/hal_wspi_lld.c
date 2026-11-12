@@ -39,6 +39,7 @@
 #define CH32_QSPI_ABORT                     QSPI_CR_ABORT
 #define CH32_QSPI_DMAEN                     QSPI_CR_DMAEN
 #define CH32_QSPI_START                     QSPI_CR_START
+#define CH32_QSPI_SIOXEN                    (1UL << 13)
 #define CH32_QSPI_FTHRES(n)                 ((uint32_t)(n) << 8)
 #define CH32_QSPI_TCIE                      QSPI_CR_TCIE
 #define CH32_QSPI_FTIE                      QSPI_CR_FTIE
@@ -64,6 +65,11 @@
 #define CH32_QSPI_CCR_FMODE_WRITE           (0UL << 26)
 #define CH32_QSPI_CCR_FMODE_READ            (1UL << 26)
 #define CH32_QSPI_CCR_FMODE_MMAP            (3UL << 26)
+
+/* Bit 1 of each phase mode field (IMODE bit9, ADMODE bit11, ABMODE bit15,
+   DMODE bit25): set for both the two-line and the four-line encodings. */
+#define CH32_QSPI_CCR_MULTILINE             ((1UL << 9) | (1UL << 11) | \
+                                             (1UL << 15) | (1UL << 25))
 
 /* FTF is left out on purpose: it is a level flag paced by the DMA and the
    handler does not clear it, its interrupt would storm the CPU. */
@@ -187,6 +193,16 @@ static void load_frame(WSPIDriver *wspip, const wspi_command_t *cmdp,
 
   if ((cmdp->cfg & WSPI_CFG_SIOO) != 0U) {
     ccr |= (1UL << 28);
+  }
+
+  /* Multi-line phases are gated by CR.SIOXEN, the vendor library wraps
+     every two- or four-line frame with QSPI_EnableQuad(); one-line frames
+     run with it cleared. */
+  if ((ccr & CH32_QSPI_CCR_MULTILINE) != 0U) {
+    q->CR |= CH32_QSPI_SIOXEN;
+  }
+  else {
+    q->CR &= (uint32_t)~CH32_QSPI_SIOXEN;
   }
 
   q->ABR = cmdp->alt;
