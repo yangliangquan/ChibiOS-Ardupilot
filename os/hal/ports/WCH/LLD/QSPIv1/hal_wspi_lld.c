@@ -213,7 +213,31 @@ static void load_frame(WSPIDriver *wspip, const wspi_command_t *cmdp,
 }
 
 /**
+ * @brief   Tears the DMA channel down in thread context.
+ * @details The tail bytes left in the FIFO are still claimed by pending
+ *          level requests, they land in the buffer a few cycles after the
+ *          unit interrupt; counting the counter out here instead of in the
+ *          ISR keeps the interrupt latency independent of the DMA state.
+ *          CNTR and MADDR must be rewritten with EN low, so the channel is
+ *          disabled right after.
+ *
+ * @notapi
+ */
+static void dma_shutdown(WSPIDriver *wspip) {
+  uint32_t guard = CH32_QSPI_DMA_DRAIN_GUARD;
+
+  while ((wspip->dma->channel->CNTR > 0U) && (guard > 0U)) {
+    guard--;
+  }
+  ch32DmaStreamClearInterrupt(wspip->dma);
+  ch32DmaStreamDisable(wspip->dma);
+}
+
+/**
  * @brief   Shared service routine for one QSPI unit.
+ * @details The routine contains no bounded waits: the DMA channel is left
+ *          running and is closed by @p dma_shutdown() when the resumed
+ *          thread issues its next transfer.
  *
  * @notapi
  */
@@ -223,19 +247,6 @@ static void serve_interrupt(WSPIDriver *wspip) {
 
   /* The request line is dropped first, the frame is over either way. */
   q->CR &= (uint32_t)~(CH32_QSPI_IE_MASK | CH32_QSPI_DMAEN);
-
-  /* A data frame owns the channel: it is counted out so the last FIFO
-     bytes reach the buffer, then stopped. A command only frame never
-     touched it. */
-  if ((wspip->state == WSPI_SEND) || (wspip->state == WSPI_RECEIVE)) {
-    uint32_t guard = CH32_QSPI_DMA_DRAIN_GUARD;
-
-    while ((wspip->dma->channel->CNTR > 0U) && (guard > 0U)) {
-      guard--;
-    }
-    ch32DmaStreamClearInterrupt(wspip->dma);
-    ch32DmaStreamDisable(wspip->dma);
-  }
 
   q->FCR = CH32_QSPI_CTCF | CH32_QSPI_CTEF | CH32_QSPI_CTOF;
 
@@ -399,12 +410,13 @@ void wspi_lld_stop(WSPIDriver *wspip) {
 
     abort_frame(wspip);
 
-    wspip->qspi->CR = 0U;
-
     if (wspip->dma != NULL) {
+      dma_shutdown(wspip);
       ch32DmaStreamFreeI(wspip->dma);
       wspip->dma = NULL;
     }
+
+    wspip->qspi->CR = 0U;
 
 #if (CH32H417_WSPI_USE_QSPI1 == TRUE)
     if (wspip == &WSPID1) {
@@ -450,6 +462,10 @@ void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
 
   begin_frame(wspip);
 
+  /* Closes the previous data frame's channel: CNTR must be zero and EN
+     low before the transaction is reprogrammed. */
+  dma_shutdown(wspip);
+
   ch32DmaStreamSetMemory0(wspip->dma, txbuf);
   ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);
   ch32DmaStreamSetMode(wspip->dma, wspip->dmamode |
@@ -476,6 +492,10 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
   QSPI_TypeDef *q = wspip->qspi;
 
   begin_frame(wspip);
+
+  /* Closes the previous data frame's channel: CNTR must be zero and EN
+     low before the transaction is reprogrammed. */
+  dma_shutdown(wspip);
 
   ch32DmaStreamSetMemory0(wspip->dma, rxbuf);
   ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);
