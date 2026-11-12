@@ -127,17 +127,17 @@ int main(void) {
   fp_test_start();
   // trng_test_start();
   // sdc_test_start();
-  // wspi_test_start();
+  wspi_test_start();
   // adc_test_start();
   // can_test_start();
-  usbfs_test_start();
+  // usbfs_test_start();
   // dac_test_start();
   // pwm_test_start();
   // icu_test_start();
   // rtc_test_start();
   // spi_test_start();
-  ecdc_test_start();
-  exti_test_start();
+  // ecdc_test_start();
+  // exti_test_start();
   // console_test_start();
   while (true) {
     LED_TOGGLE();

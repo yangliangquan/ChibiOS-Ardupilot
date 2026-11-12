@@ -137,6 +137,25 @@ static void abort_frame(WSPIDriver *wspip) {
   q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
 }
 
+/**
+ * @brief   Prepares the unit for a new frame.
+ * @details A frame that completed normally leaves the bus idle and the FIFO
+ *          empty, so the teardown only runs when the previous frame is still
+ *          on the bus or left bytes behind; the flags are dropped either
+ *          way. Back to back indirect frames skip the whole ABORT sequence.
+ *
+ * @notapi
+ */
+static void begin_frame(WSPIDriver *wspip) {
+  QSPI_TypeDef *q = wspip->qspi;
+
+  if ((q->SR & (CH32_QSPI_BUSY | CH32_QSPI_FLEVEL)) != 0U) {
+    abort_frame(wspip);
+  }
+
+  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+}
+
 /*===========================================================================*/
 /* Driver exported variables.                                                */
 /*===========================================================================*/
@@ -392,15 +411,11 @@ void wspi_lld_stop(WSPIDriver *wspip) {
 void wspi_lld_command(WSPIDriver *wspip, const wspi_command_t *cmdp) {
   QSPI_TypeDef *q = wspip->qspi;
 
-  /* Direction change: flush the FIFO and bring the bus back to idle before
-     the frame registers are loaded (vendor library does the same). */
-  abort_frame(wspip);
-
   /* No data phase is stated by DMODE=00, and DLR must not contradict it:
      DLR=0xFFFFFFFF is "undefined length", the unit would clock the whole
      flash (RM 37.4.5). DLR=0 keeps the frame at the instruction phase plus
      one byte slot. */
-  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+  begin_frame(wspip);
   q->CR &= (uint32_t)~CH32_QSPI_DMAEN;
   q->CR |= CH32_QSPI_IE_MASK;
   q->DLR = 0U;
@@ -417,9 +432,7 @@ void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
                    size_t n, const uint8_t *txbuf) {
   QSPI_TypeDef *q = wspip->qspi;
 
-  abort_frame(wspip);
-
-  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+  begin_frame(wspip);
 
   ch32DmaStreamSetMemory0(wspip->dma, txbuf);
   ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);
@@ -446,9 +459,7 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
                       size_t n, uint8_t *rxbuf) {
   QSPI_TypeDef *q = wspip->qspi;
 
-  abort_frame(wspip);
-
-  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+  begin_frame(wspip);
 
   ch32DmaStreamSetMemory0(wspip->dma, rxbuf);
   ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);

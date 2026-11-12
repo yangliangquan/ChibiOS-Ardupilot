@@ -62,6 +62,10 @@
 /* Bound of the WIP polling loop, in milliseconds. */
 #define WSPI_TEST_WIP_TIMEOUT_MS 2000U
 
+/* The 4KB sector erase is busy for tens of milliseconds (W25Q64JV tSE1
+   typ 30ms), polling before that only adds bus traffic. */
+#define WSPI_TEST_ERASE_MIN_MS 10U
+
 /* Status register bits used by the flow. */
 #define WSPI_SR_WIP 0x01U
 #define WSPI_SR_WEL 0x02U
@@ -76,9 +80,11 @@ static const WSPIConfig wspi_config = {.end_cb = NULL,
                                        .fsize = WSPI_TEST_FSIZE};
 
 /* Buffers for the DMA data phase, word aligned: one holds the page being
-   programmed, the other the page being read back. */
+   programmed, one the page being read back, one the whole sector read back
+   at once for the verification. */
 static uint8_t wspi_wbuf[WSPI_TEST_PAGE_SIZE] __attribute__((aligned(4)));
 static uint8_t wspi_rbuf[WSPI_TEST_PAGE_SIZE] __attribute__((aligned(4)));
+static uint8_t wspi_vbuf[WSPI_TEST_SECTOR_SIZE] __attribute__((aligned(4)));
 
 /*===========================================================================*/
 /* Flash command descriptors.                                                */
@@ -129,17 +135,6 @@ static const wspi_command_t cmd_ppage = {
   .cfg = WSPI_CFG_CMD_MODE_ONE_LINE | WSPI_CFG_ADDR_MODE_ONE_LINE |
          WSPI_CFG_ADDR_SIZE_24 | WSPI_CFG_DATA_MODE_ONE_LINE,
   .cmd = 0x02U,                            /* Page program.            */
-  .addr = 0U,
-  .alt = 0U,
-  .dummy = 0U
-};
-
-/* Verification read: 0x03, all phases on one line, no dummy cycles, so the
-   data pattern differs from the quad path. */
-static const wspi_command_t cmd_pread = {
-  .cfg = WSPI_CFG_CMD_MODE_ONE_LINE | WSPI_CFG_ADDR_MODE_ONE_LINE |
-         WSPI_CFG_ADDR_SIZE_24 | WSPI_CFG_DATA_MODE_ONE_LINE,
-  .cmd = 0x03U,                            /* Standard read.           */
   .addr = 0U,
   .alt = 0U,
   .dummy = 0U
@@ -212,11 +207,19 @@ static void wspi_pins_init(void) {
 
 /*
  * Polls the write-in-progress bit with a bounded wait. Returns false when
- * the bit never clears or the status reads keep failing.
+ * the bit never clears or the status reads keep failing. The caller states
+ * how long the operation is guaranteed to stay busy, the poll itself runs
+ * at one tick (100us at the configured CH_CFG_ST_FREQUENCY) instead of
+ * milliseconds: a page program is typically done in 400us.
  */
-static bool wspi_wait_wip(WSPIDriver *wspip, const wspi_command_t *cmdp) {
+static bool wspi_wait_wip(WSPIDriver *wspip, const wspi_command_t *cmdp,
+                          time_msecs_t busy_ms) {
   systime_t start = chVTGetSystemTime();
   uint8_t sr;
+
+  if (busy_ms > (time_msecs_t)0) {
+    chThdSleepMilliseconds(busy_ms);
+  }
 
   while (true) {
     if (!wspiReceive(wspip, cmdp, 1U, &sr) && ((sr & WSPI_SR_WIP) == 0U)) {
@@ -226,7 +229,7 @@ static bool wspi_wait_wip(WSPIDriver *wspip, const wspi_command_t *cmdp) {
         (time_msecs_t)WSPI_TEST_WIP_TIMEOUT_MS) {
       return false;
     }
-    chThdSleepMilliseconds(2U);
+    chThdSleep(1U);
   }
 }
 
@@ -333,7 +336,7 @@ static wspi_flow_result_t wspi_write_verify(WSPIDriver *wspip,
       return WSPI_FLOW_ERASE;
     }
   }
-  if (!wspi_wait_wip(wspip, &cmd_rdsr)) {
+  if (!wspi_wait_wip(wspip, &cmd_rdsr, WSPI_TEST_ERASE_MIN_MS)) {
     return WSPI_FLOW_TIMEOUT;
   }
 
@@ -357,30 +360,33 @@ static wspi_flow_result_t wspi_write_verify(WSPIDriver *wspip,
     if (wspiSend(wspip, &cmd, WSPI_TEST_PAGE_SIZE, wspi_wbuf)) {
       return WSPI_FLOW_PROGRAM;
     }
-    if (!wspi_wait_wip(wspip, &cmd_rdsr)) {
+    if (!wspi_wait_wip(wspip, &cmd_rdsr, 0U)) {
       return WSPI_FLOW_TIMEOUT;
     }
   }
 
-  /* Read the sector back and compare it byte by byte. */
+  /* Read the whole sector back in one quad frame and compare it byte by
+     byte, the flash auto increments the address inside the frame. */
   chprintf(chp, "\r\nWSPI: verify\r\n");
-  for (p = 0U; p < WSPI_TEST_SECTOR_PAGES; p++) {
-    uint32_t paddr = base + (p * WSPI_TEST_PAGE_SIZE);
-    wspi_command_t cmd = cmd_pread;
+  {
+    wspi_command_t cmd = cmd_quad_read;
 
-    cmd.addr = paddr;
-    stp->offset = paddr - base;
-
-    if (wspiReceive(wspip, &cmd, WSPI_TEST_PAGE_SIZE, wspi_rbuf)) {
+    cmd.addr = base;
+    if (wspiReceive(wspip, &cmd, WSPI_TEST_SECTOR_SIZE, wspi_vbuf)) {
       return WSPI_FLOW_READ;
     }
+  }
+  for (p = 0U; p < WSPI_TEST_SECTOR_PAGES; p++) {
+    uint32_t paddr = base + (p * WSPI_TEST_PAGE_SIZE);
+
     for (i = 0U; i < WSPI_TEST_PAGE_SIZE; i++) {
       uint8_t expect = wspi_pattern(paddr, i);
+      uint32_t off = (p * WSPI_TEST_PAGE_SIZE) + i;
 
-      if (wspi_rbuf[i] != expect) {
-        stp->offset = (paddr - base) + i;
+      if (wspi_vbuf[off] != expect) {
+        stp->offset = off;
         stp->expected = expect;
-        stp->actual = wspi_rbuf[i];
+        stp->actual = wspi_vbuf[off];
         return WSPI_FLOW_MISMATCH;
       }
     }
