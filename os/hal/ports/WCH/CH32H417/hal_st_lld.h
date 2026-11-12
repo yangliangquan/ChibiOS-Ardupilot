@@ -21,8 +21,11 @@
  * @details Two clock sources, following the STM32 SYSTICKv1 model:
  *          - OSAL_ST_MODE_PERIODIC: core SysTick1 (IRQ13)
  *          - OSAL_ST_MODE_FREERUNNING: a general purpose timer
- *            (CH32H417_ST_USE_TIMER, TIM2..TIM5) providing a free
- *            running 16-bit counter with four compare alarms.
+ *            (CH32H417_ST_USE_TIMER) providing a free running counter
+ *            with four compare alarms. TIM2..TIM5 are 16-bit units,
+ *            TIM9..TIM12 are 32-bit units (DS0, timer overview), the
+ *            32-bit sources remove the narrow wrap window of the 16-bit
+ *            ones under tickless operation.
  *          The timers are clocked by the core HCLK.
  *
  * @addtogroup ST
@@ -56,7 +59,8 @@
  */
 /**
  * @brief   Timer unit used as free running ST clock source
- *          (TIM2..TIM5, ignored in periodic mode).
+ *          (TIM2..TIM5, 16-bit, or TIM9..TIM12, 32-bit, ignored in
+ *          periodic mode).
  */
 #if !defined(CH32H417_ST_USE_TIMER) || defined(__DOXYGEN__)
 #define CH32H417_ST_USE_TIMER               5
@@ -69,13 +73,16 @@
 
 #if OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING
 
-#if (CH32H417_ST_USE_TIMER != 2) && (CH32H417_ST_USE_TIMER != 3) &&          \
-    (CH32H417_ST_USE_TIMER != 4) && (CH32H417_ST_USE_TIMER != 5)
-#error "CH32H417_ST_USE_TIMER must be TIM2..TIM5 (4 channel timers)"
+#if (CH32H417_ST_USE_TIMER >= 2) && (CH32H417_ST_USE_TIMER <= 5)
+#define ST_LLD_WIDTH                        16
+#elif (CH32H417_ST_USE_TIMER >= 9) && (CH32H417_ST_USE_TIMER <= 12)
+#define ST_LLD_WIDTH                        32
+#else
+#error "CH32H417_ST_USE_TIMER must be TIM2..TIM5 or TIM9..TIM12"
 #endif
 
-#if OSAL_ST_RESOLUTION != 16
-#error "CH32H417 ST freerunning requires CH_CFG_ST_RESOLUTION 16 (16-bit timers)"
+#if OSAL_ST_RESOLUTION != ST_LLD_WIDTH
+#error "CH_CFG_ST_RESOLUTION must match the selected ST timer width"
 #endif
 
 #if !defined(CH32H417_TIMCLK1)
@@ -88,6 +95,26 @@
 
 #if ((CH32H417_TIMCLK1 / OSAL_ST_FREQUENCY) - 1U) > 0xFFFFU
 #error "the selected ST frequency is not obtainable because timer prescaler limits"
+#endif
+
+/* Register selection: TIM9..TIM12 use the 32-bit aliases of the shared
+   TIM_TypeDef layout, all channels of those units are 32-bit wide. */
+#if ST_LLD_WIDTH == 32
+#define ST_REG_CNT                          CNT_32
+#define ST_REG_ATRLR                        ATRLR_32
+#define ST_REG_CH1CVR                       CH1CVR_32
+#define ST_REG_CH2CVR                       CH2CVR_32
+#define ST_REG_CH3CVR                       CH3CVR_32
+#define ST_REG_CH4CVR                       CH4CVR_32
+#define ST_LLD_COUNT_MAX                    0xFFFFFFFFU
+#else
+#define ST_REG_CNT                          CNT
+#define ST_REG_ATRLR                        ATRLR
+#define ST_REG_CH1CVR                       CH1CVR
+#define ST_REG_CH2CVR                       CH2CVR
+#define ST_REG_CH3CVR                       CH3CVR
+#define ST_REG_CH4CVR                       CH4CVR
+#define ST_LLD_COUNT_MAX                    0xFFFFU
 #endif
 
 /* Timer unit allocation conflict guards (shared with GPT/ICU/PWM).*/
@@ -131,6 +158,46 @@
 #define ST_NUMBER                        TIM5_IRQn
 #define ST_TIM                           TIM5
 #define ST_ENABLE_CLOCK()                RCC_HB1PeriphClockCmd(RCC_HB1Periph_TIM5, ENABLE)
+#elif CH32H417_ST_USE_TIMER == 9
+#if defined(CH32_TIM9_IS_USED)
+#error "ST requires TIM9 but the timer is already used"
+#else
+#define CH32_TIM9_IS_USED
+#endif
+#define ST_HANDLER                       TIM9_IRQHandler
+#define ST_NUMBER                        TIM9_IRQn
+#define ST_TIM                           TIM9
+#define ST_ENABLE_CLOCK()                RCC_HB2PeriphClockCmd(RCC_HB2Periph_TIM9, ENABLE)
+#elif CH32H417_ST_USE_TIMER == 10
+#if defined(CH32_TIM10_IS_USED)
+#error "ST requires TIM10 but the timer is already used"
+#else
+#define CH32_TIM10_IS_USED
+#endif
+#define ST_HANDLER                       TIM10_IRQHandler
+#define ST_NUMBER                        TIM10_IRQn
+#define ST_TIM                           TIM10
+#define ST_ENABLE_CLOCK()                RCC_HB2PeriphClockCmd(RCC_HB2Periph_TIM10, ENABLE)
+#elif CH32H417_ST_USE_TIMER == 11
+#if defined(CH32_TIM11_IS_USED)
+#error "ST requires TIM11 but the timer is already used"
+#else
+#define CH32_TIM11_IS_USED
+#endif
+#define ST_HANDLER                       TIM11_IRQHandler
+#define ST_NUMBER                        TIM11_IRQn
+#define ST_TIM                           TIM11
+#define ST_ENABLE_CLOCK()                RCC_HB2PeriphClockCmd(RCC_HB2Periph_TIM11, ENABLE)
+#elif CH32H417_ST_USE_TIMER == 12
+#if defined(CH32_TIM12_IS_USED)
+#error "ST requires TIM12 but the timer is already used"
+#else
+#define CH32_TIM12_IS_USED
+#endif
+#define ST_HANDLER                       TIM12_IRQHandler
+#define ST_NUMBER                        TIM12_IRQn
+#define ST_TIM                           TIM12
+#define ST_ENABLE_CLOCK()                RCC_HB2PeriphClockCmd(RCC_HB2Periph_TIM12, ENABLE)
 #endif
 
 #endif /* OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING */
@@ -170,7 +237,7 @@
  */
 static inline systime_t st_lld_get_counter(void) {
 
-  return (systime_t)ST_TIM->CNT;
+  return (systime_t)ST_TIM->ST_REG_CNT;
 }
 
 /**
@@ -192,7 +259,7 @@ static inline void st_lld_start_alarm(systime_t abstime) {
 
   osalDbgAssert(st_lld_is_alarm_active() == false, "already active");
 
-  ST_TIM->CH1CVR = (uint16_t)abstime;
+  ST_TIM->ST_REG_CH1CVR = abstime;
   ST_TIM->INTFR = 0;
   ST_TIM->DMAINTENR |= 1U << 1;
 }
@@ -214,7 +281,7 @@ static inline void st_lld_stop_alarm(void) {
  */
 static inline void st_lld_set_alarm(systime_t abstime) {
 
-  ST_TIM->CH1CVR = (uint16_t)abstime;
+  ST_TIM->ST_REG_CH1CVR = abstime;
 }
 
 /**
@@ -224,7 +291,7 @@ static inline void st_lld_set_alarm(systime_t abstime) {
  */
 static inline systime_t st_lld_get_alarm(void) {
 
-  return (systime_t)ST_TIM->CH1CVR;
+  return (systime_t)ST_TIM->ST_REG_CH1CVR;
 }
 
 #if (ST_LLD_NUM_ALARMS > 1) || defined(__DOXYGEN__)
@@ -249,13 +316,13 @@ static inline void st_lld_start_alarm_n(unsigned alarm, systime_t abstime) {
   osalDbgAssert(st_lld_is_alarm_active_n(alarm) == false, "already active");
 
   if (alarm == 1U) {
-    ST_TIM->CH2CVR = (uint16_t)abstime;
+    ST_TIM->ST_REG_CH2CVR = abstime;
   }
   else if (alarm == 2U) {
-    ST_TIM->CH3CVR = (uint16_t)abstime;
+    ST_TIM->ST_REG_CH3CVR = abstime;
   }
   else {
-    ST_TIM->CH4CVR = (uint16_t)abstime;
+    ST_TIM->ST_REG_CH4CVR = abstime;
   }
   ST_TIM->INTFR = 0;
   ST_TIM->DMAINTENR |= 2U << alarm;
@@ -279,13 +346,13 @@ static inline void st_lld_stop_alarm_n(unsigned alarm) {
 static inline void st_lld_set_alarm_n(unsigned alarm, systime_t abstime) {
 
   if (alarm == 1U) {
-    ST_TIM->CH2CVR = (uint16_t)abstime;
+    ST_TIM->ST_REG_CH2CVR = abstime;
   }
   else if (alarm == 2U) {
-    ST_TIM->CH3CVR = (uint16_t)abstime;
+    ST_TIM->ST_REG_CH3CVR = abstime;
   }
   else {
-    ST_TIM->CH4CVR = (uint16_t)abstime;
+    ST_TIM->ST_REG_CH4CVR = abstime;
   }
 }
 
@@ -297,12 +364,12 @@ static inline void st_lld_set_alarm_n(unsigned alarm, systime_t abstime) {
 static inline systime_t st_lld_get_alarm_n(unsigned alarm) {
 
   if (alarm == 1U) {
-    return (systime_t)ST_TIM->CH2CVR;
+    return (systime_t)ST_TIM->ST_REG_CH2CVR;
   }
   if (alarm == 2U) {
-    return (systime_t)ST_TIM->CH3CVR;
+    return (systime_t)ST_TIM->ST_REG_CH3CVR;
   }
-  return (systime_t)ST_TIM->CH4CVR;
+  return (systime_t)ST_TIM->ST_REG_CH4CVR;
 }
 #endif /* ST_LLD_NUM_ALARMS > 1 */
 

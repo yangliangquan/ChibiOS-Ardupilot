@@ -42,7 +42,7 @@
 #define STK_CTLR_EN                         (1UL << 0)
 #define STK_CTLR_STIE                       (1UL << 1)
 #define STK_CTLR_HCLK                       (1UL << 2)
-#define STK_CTLR_AUTO_RELOAD                (1UL << 3)
+#define STK_CTLR_STRE                       (1UL << 3)
 #define STK_CTLR_MODE_DOWN                  (1UL << 4)
 
 #endif /* OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC */
@@ -96,19 +96,21 @@ OSAL_IRQ_HANDLER(ST_HANDLER) {
 void st_lld_init(void) {
 
 #if OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING
-  /* Free running counter mode on a general purpose timer.*/
+  /* Free running counter mode on a general purpose timer. The 32-bit
+     units (TIM9..TIM12) remove the narrow wrap window of the 16-bit ones
+     under tickless operation. */
   ST_ENABLE_CLOCK();
 
   ST_TIM->CTLR1 = 0;
   ST_TIM->CTLR2 = 0;
   ST_TIM->SMCFGR = 0;
   ST_TIM->PSC = (uint16_t)((ch32h417_timclk1 / OSAL_ST_FREQUENCY) - 1U);
-  ST_TIM->ATRLR = 0xFFFFU;
+  ST_TIM->ST_REG_ATRLR = ST_LLD_COUNT_MAX;
   ST_TIM->CHCTLR1 = 0;
-  ST_TIM->CH1CVR = 0;
-  ST_TIM->CH2CVR = 0;
-  ST_TIM->CH3CVR = 0;
-  ST_TIM->CH4CVR = 0;
+  ST_TIM->ST_REG_CH1CVR = 0;
+  ST_TIM->ST_REG_CH2CVR = 0;
+  ST_TIM->ST_REG_CH3CVR = 0;
+  ST_TIM->ST_REG_CH4CVR = 0;
   ST_TIM->DMAINTENR = 0;
   ST_TIM->INTFR = 0;
   ST_TIM->SWEVGR = CH32_TIM_UG;
@@ -118,15 +120,20 @@ void st_lld_init(void) {
 #endif /* OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING */
 
 #if OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC
-  uint32_t period = ch32h417_hclk / OSAL_ST_FREQUENCY;
+  /* Periodic tick on the core SysTick1 timer (IRQ13): down counting with
+     hardware auto reload (STRE=1), the counter reloads from CMP on every
+     underflow so the period grid survives a delayed entry and the ISR
+     only drops the flag. */
+  {
+    uint32_t period = ch32h417_hclk / OSAL_ST_FREQUENCY;
 
-  /* Periodic tick on the core SysTick1 timer (IRQ13). */
-  SysTick1->CTLR = 0;
-  STK_SR &= ~STK_SR_STK_ISR1;
-  SysTick1->CMP = period;
-  SysTick1->CNT = period;
-  SysTick1->CTLR = STK_CTLR_MODE_DOWN | STK_CTLR_AUTO_RELOAD |
-                   STK_CTLR_HCLK | STK_CTLR_STIE | STK_CTLR_EN;
+    SysTick1->CTLR = 0;
+    STK_SR &= ~STK_SR_STK_ISR1;
+    SysTick1->CMP = period;
+    SysTick1->CNT = period;
+    SysTick1->CTLR = STK_CTLR_MODE_DOWN | STK_CTLR_STRE |
+                     STK_CTLR_HCLK | STK_CTLR_STIE | STK_CTLR_EN;
+  }
 
   /* IRQ enabled, core private IRQ13. */
   NVIC_EnableIRQ(SysTick1_IRQn);
