@@ -193,7 +193,11 @@ void hal_lld_init(void) {
   uint32_t hb2_keep = RCC_AFIORST | RCC_IOPARST | RCC_IOPBRST |
                       RCC_IOPCRST | RCC_IOPDRST | RCC_IOPERST |
                       RCC_IOPFRST;
-  uint32_t hb1_keep = RCC_PWRRST | RCC_BKPRST;
+  uint32_t hb1_keep = RCC_PWRRST | RCC_BKPRST
+#if HAL_XIP_ENABLED 
+                      | RCC_QSPI2RST | RCC_QSPI1RST
+#endif
+                      | 0;
 
   /* Assert and release the resets of everything but the preserved
      set. HBRSTR (DMA/FMC/SDMMC/USB/ETH side) is not touched: the

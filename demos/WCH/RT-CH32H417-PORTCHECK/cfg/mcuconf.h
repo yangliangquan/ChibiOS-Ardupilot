@@ -116,3 +116,7 @@
 #define CH32H417_WSPI_USE_QSPI2                TRUE
 #define CH32H417_CRY_USE_ECDC                  TRUE
 #define CH32H417_USB_USE_USBFS                 TRUE
+
+#if !defined(HAL_XIP_ENABLED)
+#define HAL_XIP_ENABLED                        FALSE
+#endif

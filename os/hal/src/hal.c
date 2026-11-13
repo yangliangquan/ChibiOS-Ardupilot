@@ -139,7 +139,7 @@ void halInit(void) {
 #if (HAL_USE_WDG == TRUE) || defined(__DOXYGEN__)
   wdgInit();
 #endif
-#if (HAL_USE_WSPI == TRUE) || defined(__DOXYGEN__)
+#if (HAL_USE_WSPI == TRUE) && (HAL_XIP_ENABLED == TRUE) || defined(__DOXYGEN__)
   wspiInit();
 #endif
 
