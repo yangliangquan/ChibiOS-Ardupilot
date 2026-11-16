@@ -59,6 +59,10 @@
  *                              vectors and a NIST SP 800-38A CTR vector
  *          - test_exti.c     : EXTI line 0 on PC0, the pad is toggled by
  *                              the test and every edge must interrupt
+ *          - test_cache.c    : instruction cache strategy programmed by
+ *                              crt0.S (PORT_RISCV_ICACHE_* switches), the
+ *                              master switch and the address space bits
+ *                              are flipped and read back
  *
  *          Observation points of the debugger: counter1, counter2,
  *          fcounter1, fcounter2, systime_snapshot, main_loops,
@@ -73,7 +77,8 @@
  *          rtc_failures, rtc_last_epoch, rtc_rate_mhz, spi_transfers,
  *          spi_failures, spi_rounds, spi_last_error, cry_blocks,
  *          cry_failures, cry_rounds, cry_last_error, exti_edges,
- *          exti_rounds and exti_failures. The LED on PD11 blinks with a
+ *          exti_rounds, exti_failures, cache_rounds, cache_failures and
+ *          cache_strtg. The LED on PD11 blinks with a
  *          500ms period (PAL).
  *
  * @addtogroup RT
@@ -138,6 +143,7 @@ int main(void) {
   // spi_test_start();
   // ecdc_test_start();
   // exti_test_start();
+  // cache_test_start();
   // console_test_start();
   while (true) {
     LED_TOGGLE();

@@ -264,6 +264,52 @@ void ch32h417_clock_update_live(void) {
 }
 
 /**
+ * @brief   Returns the current cache_strtg_ctlr value.
+ *
+ * @return              The CSR 0xBC2 content.
+ *
+ * @notapi
+ */
+uint32_t ch32h417_icache_get(void) {
+  uint32_t strtg;
+
+  __asm__ volatile ("csrr %0, 0xBC2" : "=r" (strtg));
+
+  return strtg;
+}
+
+/**
+ * @brief   Invalidates the whole instruction cache.
+ *
+ * @notapi
+ */
+void ch32h417_icache_invalidate(void) {
+
+  /* opcache_ctlr: VADDR=0, address mode, opcode 00 (invalidate), the same
+     maintenance operation the WCH startup performs. */
+  __asm__ volatile ("csrw 0xBD0, %0" : :
+                    "r" ((uint32_t)(OPCACHE_CTLR_IDX_MODE_ADDR |
+                                    OPCACHE_CTLR_OP_ICACHE_INVAL)) : "memory");
+}
+
+/**
+ * @brief   Programs a new cache strategy.
+ *
+ * @param[in] strtg     OR of @p CACHE_STRTG_CTLR_IC_* and optionally
+ *                      @p CACHE_STRTG_CTLR_IC_DISABLE
+ *
+ * @notapi
+ */
+void ch32h417_icache_set(uint32_t strtg) {
+
+  /* The lines fetched under the previous strategy are not valid under
+     the new one. */
+  ch32h417_icache_invalidate();
+  __asm__ volatile ("csrw 0xBC2, %0" : : "r" (strtg) : "memory");
+  __asm__ volatile ("fence.i" : : : "memory");
+}
+
+/**
  * @brief   Returns the frequency of a clock point in Hz.
  */
 uint32_t hal_lld_get_clock_point(uint32_t clkpt) {

@@ -45,6 +45,7 @@
 
 #include "ch32h417.h"
 #include "ch32h417_rcc.h"
+#include "riscv_encoding.h"
 
 /*===========================================================================*/
 /* Driver constants.                                                         */
@@ -355,6 +356,44 @@ void ch32h417_clock_update_live(void);
  * @notapi
  */
 uint32_t hal_lld_get_clock_point(uint32_t clkpt);
+/** @} */
+
+/**
+ * @name    Instruction cache control
+ * @details The cache is configured at boot by crt0.S from the
+ *          PORT_RISCV_ICACHE_* pre-compile time switches defined in that
+ *          file. These helpers allow changing the strategy at run time,
+ *          for example to switch the cache off while a benchmark runs,
+ *          or to invalidate it after code has been written to the flash
+ *          or to an external memory window.
+ * @note    Only the V5F core has an instruction cache.
+ * @{
+ */
+/**
+ * @brief   Returns the current cache_strtg_ctlr value.
+ *
+ * @return              The CSR 0xBC2 content.
+ */
+uint32_t ch32h417_icache_get(void);
+
+/**
+ * @brief   Programs a new cache strategy.
+ * @details The cache is invalidated first, then the new strategy is
+ *          written and the instruction stream is synchronized.
+ *
+ * @param[in] strtg     OR of @p CACHE_STRTG_CTLR_IC_* and optionally
+ *                      @p CACHE_STRTG_CTLR_IC_DISABLE, passing zero
+ *                      leaves the cache enabled with all the address
+ *                      spaces excluded
+ */
+void ch32h417_icache_set(uint32_t strtg);
+
+/**
+ * @brief   Invalidates the whole instruction cache.
+ * @note    Required after the code flash or an external memory window
+ *          has been written while the corresponding space is cached.
+ */
+void ch32h417_icache_invalidate(void);
 /** @} */
 
 /**

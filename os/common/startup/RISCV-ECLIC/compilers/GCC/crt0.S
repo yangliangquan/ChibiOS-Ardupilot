@@ -106,6 +106,59 @@
 #define CRT0_CALL_DESTRUCTORS               TRUE
 #endif
 
+/**
+ * @brief   Instruction cache master switch.
+ * @details Programs cache_strtg_ctlr (CSR 0xBC2) before the DATA/BSS
+ *          segments are initialized: TRUE turns the cache on
+ *          (IC_DISABLE=0), FALSE leaves it off (the reset state).
+ * @note    Only the V5F core has an instruction cache, the V3F core does
+ *          not implement the CSR and has its own startup file.
+ * @note    This file does not see mcuconf.h/halconf.h, override the
+ *          switches of this section from the command line instead:
+ *          UADEFS (rule ADEFS) for the assembler, UDEFS as well when C
+ *          code needs to read the same value.
+ */
+#if !defined(PORT_RISCV_ICACHE_ENABLE) || defined(__DOXYGEN__)
+#define PORT_RISCV_ICACHE_ENABLE            TRUE
+#endif
+
+/**
+ * @brief   Allows instruction caching of 0x00000000-0x1FFFFFFF.
+ * @note    The code flash window of this port (0x00010000 and up, see
+ *          CH32H417_FLASH.ld) lives in this space, this is the switch
+ *          that matters when code runs from XIP flash.
+ */
+#if !defined(PORT_RISCV_ICACHE_CODE_AREA) || defined(__DOXYGEN__)
+#define PORT_RISCV_ICACHE_CODE_AREA         TRUE
+#endif
+
+/**
+ * @brief   Allows instruction caching of 0x20000000-0x3FFFFFFF.
+ * @note    ITCM, DTCM and the shared SRAM live in this space. They are
+ *          zero-wait memories, keeping them out of the cache leaves the
+ *          whole 32KB array to the flash window.
+ */
+#if !defined(PORT_RISCV_ICACHE_SRAM_AREA) || defined(__DOXYGEN__)
+#define PORT_RISCV_ICACHE_SRAM_AREA         FALSE
+#endif
+
+/**
+ * @brief   Allows instruction caching of 0x60000000-0x7FFFFFFF.
+ * @note    External memory window (QSPI XIP, FMC), opt-in: enable it
+ *          only when code is actually executed from there.
+ */
+#if !defined(PORT_RISCV_ICACHE_MEM0_AREA) || defined(__DOXYGEN__)
+#define PORT_RISCV_ICACHE_MEM0_AREA         FALSE
+#endif
+
+/**
+ * @brief   Allows instruction caching of 0x80000000-0x9FFFFFFF.
+ * @note    Second external memory window, opt-in like MEM0.
+ */
+#if !defined(PORT_RISCV_ICACHE_MEM1_AREA) || defined(__DOXYGEN__)
+#define PORT_RISCV_ICACHE_MEM1_AREA         FALSE
+#endif
+
 /*===========================================================================*/
 /* Code section.                                                             */
 /*===========================================================================*/
@@ -113,6 +166,48 @@
 #if !defined(__DOXYGEN__)
 
 #include "riscv_encoding.h"
+
+/*
+ * cache_strtg_ctlr value composed from the switches above, the bit
+ * definitions come from riscv_encoding.h. Bit 0 is the reserved
+ * read-only bit that reads back as one, it is kept in the value for
+ * clarity, writes to it are ignored.
+ * The bit selection uses the preprocessor rather than a ternary
+ * because the result is consumed by the assembler.
+ */
+#if PORT_RISCV_ICACHE_ENABLE
+#define ICACHE_CTLR_DIS_BIT     0
+#else
+#define ICACHE_CTLR_DIS_BIT     CACHE_STRTG_CTLR_IC_DISABLE
+#endif
+
+#if PORT_RISCV_ICACHE_CODE_AREA
+#define ICACHE_CTLR_CODE_BIT    CACHE_STRTG_CTLR_IC_CODE
+#else
+#define ICACHE_CTLR_CODE_BIT    0
+#endif
+
+#if PORT_RISCV_ICACHE_SRAM_AREA
+#define ICACHE_CTLR_SRAM_BIT    CACHE_STRTG_CTLR_IC_SRAM
+#else
+#define ICACHE_CTLR_SRAM_BIT    0
+#endif
+
+#if PORT_RISCV_ICACHE_MEM0_AREA
+#define ICACHE_CTLR_MEM0_BIT    CACHE_STRTG_CTLR_IC_MEM0
+#else
+#define ICACHE_CTLR_MEM0_BIT    0
+#endif
+
+#if PORT_RISCV_ICACHE_MEM1_AREA
+#define ICACHE_CTLR_MEM1_BIT    CACHE_STRTG_CTLR_IC_MEM1
+#else
+#define ICACHE_CTLR_MEM1_BIT    0
+#endif
+
+#define ICACHE_CTLR_VALUE       \
+  (1 | ICACHE_CTLR_DIS_BIT | ICACHE_CTLR_CODE_BIT | ICACHE_CTLR_SRAM_BIT | \
+   ICACHE_CTLR_MEM0_BIT | ICACHE_CTLR_MEM1_BIT)
 
 .section .crt0, "ax"
 .global _start
@@ -159,6 +254,21 @@ _crt0_entry:
     /* corecfgr: prefetch/benchmark options + IE remap enable (0xBC0). */
     li      t0, 0x1237B3E0
     csrw    CSR_CORECFGR, t0
+
+    /*
+     * cache_strtg_ctlr (0xBC2): instruction cache master switch plus the
+     * per address space strategies, composed at the top of this file.
+     * Done before the .text copy so that the flash-resident startup code
+     * is already fetched through the cache; the array is invalidated
+     * first so that no line survives the strategy change (same order as
+     * the WCH startup).
+     */
+#if PORT_RISCV_ICACHE_ENABLE
+    li      t0, (OPCACHE_CTLR_IDX_MODE_ADDR | OPCACHE_CTLR_OP_ICACHE_INVAL)
+    csrw    CSR_OPCACHE_CTLR, t0
+#endif
+    li      t0, ICACHE_CTLR_VALUE
+    csrw    CSR_CACHE_STRTG_CTLR, t0
 
     /*
      * inestcr (0xBC1): maximum nesting level. Must match

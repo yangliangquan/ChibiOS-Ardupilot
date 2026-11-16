@@ -87,6 +87,40 @@
 #define INESTCR_NEST_LVL_MASK           0x7UL
 #define INESTCR_NEST_OV                 (1UL << 30)
 
+/*
+ * Instruction cache strategy control (V5F core only, the V3F core has
+ * no cache and does not implement this CSR).
+ * The value written at boot is composed by crt0.S from the
+ * PORT_RISCV_ICACHE_* switches, which are startup pre-compile time
+ * settings defined in that file.
+ */
+#define CSR_CACHE_STRTG_CTLR            0xBC2
+#define CSR_CACHE_PMP_OVR               0xBC3
+
+/*
+ * cache_strtg_ctlr fields.
+ * @note Consumed by crt0.S as well, plain integer literals only: the
+ *       assembler cannot parse the C suffixes used elsewhere in this
+ *       file (see the note on the frame size macros below).
+ */
+#define CACHE_STRTG_CTLR_IC_DISABLE     (1 << 1)
+#define CACHE_STRTG_CTLR_IC_CODE        (1 << 24)
+#define CACHE_STRTG_CTLR_IC_SRAM        (1 << 25)
+#define CACHE_STRTG_CTLR_IC_MEM0        (1 << 26)
+#define CACHE_STRTG_CTLR_IC_MEM1        (1 << 27)
+
+/*
+ * Reset value: cache disabled (IC_DISABLE=1), the CODE and SRAM spaces
+ * already allowed, MEM0 and MEM1 not allowed. Bit 0 is reserved and
+ * reads back as one.
+ */
+#define CACHE_STRTG_CTLR_RESET_VALUE    0x03000003
+
+/* Instruction cache maintenance register (write only). */
+#define CSR_OPCACHE_CTLR                0xBD0
+#define OPCACHE_CTLR_OP_ICACHE_INVAL    0
+#define OPCACHE_CTLR_IDX_MODE_ADDR      (1 << 2)
+
 /* Hardware interrupt stack address (DTCM block, 512-bit aligned). */
 #define CSR_HW_POPDM_ADDR               0xBC4
 
@@ -139,6 +173,11 @@
 #if !defined(PORT_RISCV_USE_IRQ_STACK)
 #define PORT_RISCV_USE_IRQ_STACK        1
 #endif
+
+/*
+ * The instruction cache switches (PORT_RISCV_ICACHE_*) are pre-compile
+ * time settings of the startup file, crt0.S holds their defaults.
+ */
 
 /**
  * @brief   Number of interrupt preemption bits.
