@@ -44,6 +44,8 @@ SECTIONS
         __text_base__ = .;
         *(.text)
         *(.text.*)
+        *(.fastramfunc)
+        *(.fastramfunc.*)
         *(.gcc*)
         __text_end__ = .;
     } > TEXT_RAM AT > TEXT_RAM_LMA
