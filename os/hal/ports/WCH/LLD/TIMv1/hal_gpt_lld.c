@@ -369,7 +369,7 @@ void gpt_lld_polled_delay(GPTDriver *gptp, gptcnt_t interval) {
  *
  * @notapi
  */
-void gpt_lld_serve_interrupt(GPTDriver *gptp) {
+__FASTRAMFUNC__ void gpt_lld_serve_interrupt(GPTDriver *gptp) {
   TIM_TypeDef *t = gptp->tim;
 
   if ((t->INTFR & TIM_UIF) != 0U) {

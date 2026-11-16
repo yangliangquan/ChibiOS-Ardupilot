@@ -89,7 +89,7 @@
  * @param[in] p         driver instance passed as callback argument
  * @param[in] flags     DMA interrupt flags
  */
-static void wspi_lld_serve_dma_interrupt(void *p, uint32_t flags) {
+static __FASTRAMFUNC__ void wspi_lld_serve_dma_interrupt(void *p, uint32_t flags) {
 
   (void)p;
   (void)flags;

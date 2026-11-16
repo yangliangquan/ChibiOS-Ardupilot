@@ -1053,7 +1053,7 @@ msg_t sio_lld_control(SIODriver *siop, unsigned int operation, void *arg) {
  *
  * @notapi
  */
-void sio_lld_serve_interrupt(SIODriver *siop) {
+__FASTRAMFUNC__ void sio_lld_serve_interrupt(SIODriver *siop) {
   USART_TypeDef *u = siop->usart;
   uint16_t sr = u->STATR;
   uint16_t cr1 = u->CTLR1;

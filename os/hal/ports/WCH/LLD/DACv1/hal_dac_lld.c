@@ -44,7 +44,7 @@
  * @param[in] dacp      pointer to the @p DACDriver object
  * @param[in] flags     pre-shifted content of the INTFR register
  */
-static void dac_lld_serve_interrupt(DACDriver *dacp, uint32_t flags) {
+static __FASTRAMFUNC__ void dac_lld_serve_interrupt(DACDriver *dacp, uint32_t flags) {
 
   /* DMA errors handling.*/
   if ((flags & CH32_DMA_ISR_TEIF) != 0U) {

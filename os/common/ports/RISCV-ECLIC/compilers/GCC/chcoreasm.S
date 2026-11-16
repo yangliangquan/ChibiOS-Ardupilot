@@ -93,11 +93,14 @@ _zombies:
 /* --------------------------------------------------------------------------
  * Common interrupt entry.
  *
- * The vector stubs load the address of the C handler in gp and jump here,
- * the whole entry/exit sequence is shared by all the vectors so that the
- * code size does not grow with the number of interrupt sources.
+ * The vector stubs push the address of the C handler on the stack and jump
+ * here, the whole entry/exit sequence is shared by all the vectors so that
+ * the code size does not grow with the number of interrupt sources.
+ *
+ * This whole path lives in .fastramfunc (ITCM); the flash .vectors stubs
+ * reach it with pcrel `auipc`+`jr`, `j` (±1MB) cannot span flash→ITCM.
  * -------------------------------------------------------------------------- */
-.section .text
+.section .fastramfunc, "ax", @progbits
 .option push
 .option norelax
 .align 4
@@ -123,7 +126,7 @@ _port_irq_entry_nonest:
  * The frame layout must match struct port_intctx in chcore.h. The frame is
  * 16-byte aligned in both the integer-only and the FP variants.
  * -------------------------------------------------------------------------- */
-.section .text
+.section .fastramfunc, "ax", @progbits
 .option push
 .option norelax
 .align 4
@@ -213,31 +216,16 @@ _port_switch:
 /* --------------------------------------------------------------------------
  * ISR exit path.
  *
- * All the vector stubs tail-jump here after the C handler returned. With
- * PORT_RISCV_USE_IRQ_STACK enabled the handler ran on .istack, so the
- * outermost level has its frame on the interrupted thread stack (latched
- * in mscratch) while sp points at __irq_stack_end__. Nested levels have
- * both their frame and sp in .istack.
- *
- * Nested levels simply restore their frame and mret back to the interrupted
- * point; only the outermost level switches sp back to the thread frame and
- * evaluates a pending preemption. This is the check the PFIC GISR nesting
- * state is used for (see _port_irq_stack_switch_back() in chcore.c).
- *
- * If the handler requested a preemption, the exception return of the
- * outermost level is redirected to the switch adapter: the frame stays on
- * the interrupted thread stack and the adapter performs the context switch,
- * then restores the frame and returns to the interrupted point. This is the
- * RISC-V equivalent of the ARMv7-M "return to base" trick, it keeps the
- * reschedule atomic with respect to the interrupt exit. Note that the
- * second mret of this path is harmless: stacking is done in software, so
- * no hardware prologue/epilogue is triggered by an exception return.
- *
- * Interrupts are disabled before the restore and stay disabled until mret
- * re-enables them from the saved mstatus.MPIE. The saved mstatus itself
- * has MIE=0, so a nested trap can never observe a half-restored frame.
+ * All the vector stubs tail-jump here after the C handler returned. Nested
+ * levels restore their frame and mret straight back; the outermost level
+ * switches sp back to the interrupted thread frame (via
+ * _port_irq_stack_switch_back) and evaluates a pending preemption. If a
+ * preemption was requested, the exception return of that outermost level is
+ * redirected to the switch adapter which performs the context switch and
+ * then restores the frame. Interrupts stay disabled until mret re-enables
+ * them from the saved mstatus.MPIE.
  * -------------------------------------------------------------------------- */
-.section .text
+.section .fastramfunc, "ax", @progbits
 .option push
 .option norelax
 .align 4

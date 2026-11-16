@@ -496,7 +496,7 @@ void ch32DmaStreamFree(const ch32_dma_stream_t *dmastp) {
  *
  * @special
  */
-void ch32DmaServeInterrupt(const ch32_dma_stream_t *dmastp) {
+__FASTRAMFUNC__ void ch32DmaServeInterrupt(const ch32_dma_stream_t *dmastp) {
   uint32_t flags = (dmastp->dma->INTFR >> dmastp->shift) & CH32_DMA_ISR_MASK;
 
   /* Only the sources with the corresponding enable bit set are serviced,

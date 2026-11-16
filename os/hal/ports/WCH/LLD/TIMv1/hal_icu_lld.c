@@ -375,7 +375,7 @@ bool icu_lld_wait_capture(ICUDriver *icup) {
  *
  * @notapi
  */
-void icu_lld_serve_interrupt(ICUDriver *icup) {
+__FASTRAMFUNC__ void icu_lld_serve_interrupt(ICUDriver *icup) {
   TIM_TypeDef *t = icup->tim;
   const ICUConfig *cfg = icup->config;
 

@@ -145,7 +145,7 @@ void st_lld_init(void) {
  *
  * @notapi
  */
-void st_lld_serve_interrupt(void) {
+__FASTRAMFUNC__ void st_lld_serve_interrupt(void) {
 
 #if OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING
   uint32_t sr = ST_TIM->INTFR;

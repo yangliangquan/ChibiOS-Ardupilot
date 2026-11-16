@@ -961,7 +961,7 @@ size_t uart_lld_stop_receive(UARTDriver *uartp) {
  *
  * @notapi
  */
-void uart_lld_serve_interrupt(UARTDriver *uartp) {
+__FASTRAMFUNC__ void uart_lld_serve_interrupt(UARTDriver *uartp) {
   USART_TypeDef *u = uartp->usart;
   uint16_t sr = u->STATR;
   uint16_t cr1 = u->CTLR1;

@@ -502,11 +502,20 @@ static inline void _port_init_fp_context(struct port_intctx *ctxp) {
  * @brief   IRQ handler function declaration.
  * @note    @p id can be a function name or a vector number depending on the
  *          port implementation.
+ * @note    PORT_IRQ_ATTRIBUTES defaults to __FASTRAMFUNC__ (which itself
+ *          defaults to empty); boards define them to pin ISR code into
+ *          fast RAM, e.g. hwdef.h on CH32H417 RISC-V XIP builds.
  */
+#ifndef __FASTRAMFUNC__
+#define __FASTRAMFUNC__
+#endif
+#ifndef PORT_IRQ_ATTRIBUTES
+#define PORT_IRQ_ATTRIBUTES __FASTRAMFUNC__
+#endif
 #ifdef __cplusplus
-#define PORT_IRQ_HANDLER(id) extern "C" void id(void)
+#define PORT_IRQ_HANDLER(id) extern "C" PORT_IRQ_ATTRIBUTES void id(void)
 #else
-#define PORT_IRQ_HANDLER(id) void id(void)
+#define PORT_IRQ_HANDLER(id) PORT_IRQ_ATTRIBUTES void id(void)
 #endif
 
 /**

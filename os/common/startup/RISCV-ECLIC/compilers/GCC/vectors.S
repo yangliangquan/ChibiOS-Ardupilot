@@ -220,13 +220,20 @@ _vec_default:
 /* Core exceptions and system interrupts.
    Exceptions never allow nesting, the external and the core timer
    interrupts do. */
+/* The common entry/exit code lives in .fastramfunc (ITCM), pcrel auipc+jr
+   reaches it from the flash stubs; `j` (±1MB) cannot span flash→ITCM. */
 .macro VECN name
 .align  2
 .globl _vec_\name
 .type _vec_\name,@function
 _vec_\name:
     PORT_IRQ_STUB_PROLOGUE \name
-    j       _port_irq_entry_nonest
+    .option push
+    .option norelax
+1:  auipc   t0, %pcrel_hi(_port_irq_entry_nonest)
+    addi    t0, t0, %pcrel_lo(1b)
+    jr      t0
+    .option pop
 .endm
 
 .macro VEC name
@@ -235,7 +242,12 @@ _vec_\name:
 .type _vec_\name,@function
 _vec_\name:
     PORT_IRQ_STUB_PROLOGUE \name
-    j       _port_irq_entry
+    .option push
+    .option norelax
+1:  auipc   t0, %pcrel_hi(_port_irq_entry)
+    addi    t0, t0, %pcrel_lo(1b)
+    jr      t0
+    .option pop
 .endm
 
 VECN    NMI_Handler

@@ -82,7 +82,7 @@ ADCDriver ADCD2 = {
  * @param[in] adcp      pointer to the @p ADCDriver object
  * @param[in] flags     pre-shifted content of the INTFR register
  */
-static void adc_lld_serve_interrupt(ADCDriver *adcp, uint32_t flags) {
+static __FASTRAMFUNC__ void adc_lld_serve_interrupt(ADCDriver *adcp, uint32_t flags) {
 
   /* DMA errors handling.*/
   if ((flags & CH32_DMA_ISR_TEIF) != 0U) {

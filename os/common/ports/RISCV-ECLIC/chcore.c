@@ -27,7 +27,6 @@
  */
 
 #include <stddef.h>
-
 #include "ch.h"
 
 /* Bottom of the independent interrupt stack, defined by rules_stacks.ld. */
@@ -74,7 +73,7 @@ volatile bool port_preempt_pending;
  *
  * @special
  */
-bool _port_irq_preempt_pending(void) {
+__FASTRAMFUNC__ bool _port_irq_preempt_pending(void) {
 
 #if CH_DBG_ENABLE_ASSERTS
   /* Fatal condition: the hardware cannot exit from the exception that
@@ -108,7 +107,7 @@ bool _port_irq_preempt_pending(void) {
  *
  * @special
  */
-uint32_t _port_irq_stack_switch_back(uint32_t sp, uint32_t irq_stack_top) {
+__FASTRAMFUNC__ uint32_t _port_irq_stack_switch_back(uint32_t sp, uint32_t irq_stack_top) {
   uint32_t frame_sp;
 
 #if CH_DBG_ENABLE_ASSERTS
