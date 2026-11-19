@@ -168,10 +168,12 @@ static msg_t dma_setup(I2CDriver *i2cp) {
 
   /* The data phase is polled, no DMA interrupt callback is registered.*/
   i2cp->dmarx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, prio, NULL, NULL);
+  osalDbgAssert(i2cp->dmarx != NULL, "I2C RX DMA channel not available");
   if (i2cp->dmarx == NULL) {
     return MSG_RESET;
   }
   i2cp->dmatx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, prio, NULL, NULL);
+  osalDbgAssert(i2cp->dmatx != NULL, "I2C TX DMA channel not available");
   if (i2cp->dmatx == NULL) {
     ch32DmaStreamFreeI(i2cp->dmarx);
     i2cp->dmarx = NULL;
