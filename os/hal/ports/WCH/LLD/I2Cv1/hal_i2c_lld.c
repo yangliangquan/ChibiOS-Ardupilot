@@ -166,18 +166,24 @@ static msg_t dma_setup(I2CDriver *i2cp) {
     return MSG_RESET;
   }
 
-  /* The data phase is polled, no DMA interrupt callback is registered.*/
-  i2cp->dmarx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, prio, NULL, NULL);
-  osalDbgAssert(i2cp->dmarx != NULL, "I2C RX DMA channel not available");
+  /* The data phase is polled, no DMA interrupt callback is registered.
+     Channels already held are reused, the routing is persistent for the
+     lifetime of the driver, so a repeated start cannot leak them.*/
   if (i2cp->dmarx == NULL) {
-    return MSG_RESET;
+    i2cp->dmarx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, prio, NULL, NULL);
+    osalDbgAssert(i2cp->dmarx != NULL, "I2C RX DMA channel not available");
+    if (i2cp->dmarx == NULL) {
+      return MSG_RESET;
+    }
   }
-  i2cp->dmatx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, prio, NULL, NULL);
-  osalDbgAssert(i2cp->dmatx != NULL, "I2C TX DMA channel not available");
   if (i2cp->dmatx == NULL) {
-    ch32DmaStreamFreeI(i2cp->dmarx);
-    i2cp->dmarx = NULL;
-    return MSG_RESET;
+    i2cp->dmatx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, prio, NULL, NULL);
+    osalDbgAssert(i2cp->dmatx != NULL, "I2C TX DMA channel not available");
+    if (i2cp->dmatx == NULL) {
+      ch32DmaStreamFreeI(i2cp->dmarx);
+      i2cp->dmarx = NULL;
+      return MSG_RESET;
+    }
   }
 
   ch32DmaStreamSetPeripheral(i2cp->dmarx, &i2cp->i2c->DATAR);
@@ -245,7 +251,7 @@ static void unit_enable(I2C_TypeDef *u) {
  *
  * @notapi
  */
-void i2c_lld_start(I2CDriver *i2cp) {
+msg_t i2c_lld_start(I2CDriver *i2cp) {
   I2C_InitTypeDef init;
   msg_t dma_msg;
 
@@ -259,7 +265,7 @@ void i2c_lld_start(I2CDriver *i2cp) {
 
   dma_msg = dma_setup(i2cp);
   osalDbgAssert(dma_msg == MSG_OK, "I2C DMA channels not available");
-  (void)dma_msg;
+  return (dma_msg == MSG_OK) ? HAL_RET_SUCCESS : HAL_RET_NO_RESOURCE;
 }
 
 /**

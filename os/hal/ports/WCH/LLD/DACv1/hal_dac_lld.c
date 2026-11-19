@@ -123,14 +123,17 @@ msg_t dac_lld_start(DACDriver *dacp) {
   DAC_Cmd(DAC_Channel_2, ENABLE);
 
   /* Dynamic channel allocation, the request routing is done on the channel
-     that was handed out.*/
-  dacp->dma = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
-                                  CH32H417_DAC_DAC1_DMA_PRIORITY,
-                                  (ch32_dmaisr_t)dac_lld_serve_interrupt,
-                                  (void *)dacp);
-  osalDbgAssert(dacp->dma != NULL, "DAC1 DMA channel not available");
+     that was handed out. An already held channel is reused on a repeated
+     start without an intermediate stop.*/
   if (dacp->dma == NULL) {
-    return HAL_RET_NO_RESOURCE;
+    dacp->dma = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
+                                    CH32H417_DAC_DAC1_DMA_PRIORITY,
+                                    (ch32_dmaisr_t)dac_lld_serve_interrupt,
+                                    (void *)dacp);
+    osalDbgAssert(dacp->dma != NULL, "DAC1 DMA channel not available");
+    if (dacp->dma == NULL) {
+      return HAL_RET_NO_RESOURCE;
+    }
   }
 
   return HAL_RET_SUCCESS;

@@ -140,7 +140,7 @@ void adc_lld_init(void) {
  *
  * @notapi
  */
-void adc_lld_start(ADCDriver *adcp) {
+msg_t adc_lld_start(ADCDriver *adcp) {
   ADC_InitTypeDef init;
   uint32_t guard;
 
@@ -177,28 +177,31 @@ void adc_lld_start(ADCDriver *adcp) {
   }
 
   /* Dynamic channel allocation, then routing of the ADC request onto the
-     channel that was handed out.*/
-  if (adcp->adc == ADC1) {
-    adcp->dmastp = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
-                                       CH32H417_ADC_ADC1_DMA_PRIORITY,
-                                       (ch32_dmaisr_t)adc_lld_serve_interrupt,
-                                       (void *)adcp);
-    osalDbgAssert(adcp->dmastp != NULL, "ADC1 DMA channel not available");
-    if (adcp->dmastp == NULL) {
-      return;
+     channel that was handed out. An already held channel is reused, the
+     routing is persistent for the lifetime of the driver.*/
+  if (adcp->dmastp == NULL) {
+    if (adcp->adc == ADC1) {
+      adcp->dmastp = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
+                                         CH32H417_ADC_ADC1_DMA_PRIORITY,
+                                         (ch32_dmaisr_t)adc_lld_serve_interrupt,
+                                         (void *)adcp);
+      osalDbgAssert(adcp->dmastp != NULL, "ADC1 DMA channel not available");
+      if (adcp->dmastp == NULL) {
+        return HAL_RET_NO_RESOURCE;
+      }
+      ch32DmaStreamSetRequest(adcp->dmastp, CH32_DMAMUX_ADC1);
     }
-    ch32DmaStreamSetRequest(adcp->dmastp, CH32_DMAMUX_ADC1);
-  }
-  else {
-    adcp->dmastp = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
-                                       CH32H417_ADC_ADC2_DMA_PRIORITY,
-                                       (ch32_dmaisr_t)adc_lld_serve_interrupt,
-                                       (void *)adcp);
-    osalDbgAssert(adcp->dmastp != NULL, "ADC2 DMA channel not available");
-    if (adcp->dmastp == NULL) {
-      return;
+    else {
+      adcp->dmastp = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY,
+                                         CH32H417_ADC_ADC2_DMA_PRIORITY,
+                                         (ch32_dmaisr_t)adc_lld_serve_interrupt,
+                                         (void *)adcp);
+      osalDbgAssert(adcp->dmastp != NULL, "ADC2 DMA channel not available");
+      if (adcp->dmastp == NULL) {
+        return HAL_RET_NO_RESOURCE;
+      }
+      ch32DmaStreamSetRequest(adcp->dmastp, CH32_DMAMUX_ADC2);
     }
-    ch32DmaStreamSetRequest(adcp->dmastp, CH32_DMAMUX_ADC2);
   }
 
   ch32DmaStreamSetPeripheral(adcp->dmastp, &adcp->adc->RDATAR);
@@ -207,6 +210,8 @@ void adc_lld_start(ADCDriver *adcp) {
   NVIC_SetPriority(ADC1_2_IRQn,
                    (uint8_t)CH32_IRQ_PRIORITY(CH32H417_ADC_IRQ_PRIORITY));
   NVIC_EnableIRQ(ADC1_2_IRQn);
+
+  return HAL_RET_SUCCESS;
 }
 
 /**
