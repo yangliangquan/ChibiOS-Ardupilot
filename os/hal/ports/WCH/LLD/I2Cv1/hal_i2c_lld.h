@@ -208,11 +208,14 @@ extern I2CDriver I2CD3;
 extern I2CDriver I2CD4;
 #endif
 
+/* Enhanced API, i2c_lld_start() returns an operation status.*/
+#define I2C_LLD_ENHANCED_API
+
 #ifdef __cplusplus
 extern "C" {
 #endif
   void i2c_lld_init(void);
-  void i2c_lld_start(I2CDriver *i2cp);
+  msg_t i2c_lld_start(I2CDriver *i2cp);
   void i2c_lld_stop(I2CDriver *i2cp);
   void i2c_lld_soft_stop(I2CDriver *i2cp);
   msg_t i2c_lld_master_transmit_timeout(I2CDriver *i2cp, i2caddr_t addr,

@@ -188,9 +188,17 @@ static uint32_t sdc_lld_get_timeout(SDCDriver *sdcp, uint32_t ms) {
  * @brief   Arms the DMA channel for one data phase.
  * @note    Word on both sides: every SDIO transfer length is a word
  *          multiple and the FIFO moves one 32-bit word per request.
+ *
+ * @return              The operation status.
+ * @retval HAL_SUCCESS  operation succeeded.
+ * @retval HAL_FAILED   the DMA channel is not allocated.
  */
-static void sdc_lld_arm_dma(SDCDriver *sdcp, const void *buf,
+static bool sdc_lld_arm_dma(SDCDriver *sdcp, const void *buf,
                             uint32_t bytes, bool tocard) {
+
+  if (sdcp->dma == NULL) {
+    return HAL_FAILED;
+  }
 
   ch32DmaStreamSetMemory0(sdcp->dma, buf);
   ch32DmaStreamSetTransactionSize(sdcp->dma, bytes / 4U);
@@ -198,6 +206,8 @@ static void sdc_lld_arm_dma(SDCDriver *sdcp, const void *buf,
                                    (tocard ? CH32_DMA_CFGR_DIR_M2P :
                                              CH32_DMA_CFGR_DIR_P2M));
   ch32DmaStreamEnable(sdcp->dma);
+
+  return HAL_SUCCESS;
 }
 
 /**
@@ -226,7 +236,8 @@ static bool sdc_lld_prepare_read_bytes(SDCDriver *sdcp,
   sdcp->sdio->DLEN  = bytes;
 
   /* The channel is armed before DTEN so no request is lost.*/
-  sdc_lld_arm_dma(sdcp, buf, bytes, false);
+  if (sdc_lld_arm_dma(sdcp, buf, bytes, false) == true)
+    return HAL_FAILED;
 
   sdcp->sdio->DCTRL = CH32_SDIO_DCTRL_DTDIR |
                       CH32_SDIO_DCTRL_DTMODE |
@@ -1027,7 +1038,8 @@ static bool sdc_lld_read_aligned(SDCDriver *sdcp, uint32_t startblk,
   if (sdc_lld_prepare_read(sdcp, startblk, blocks, resp) == true)
     goto error;
 
-  sdc_lld_arm_dma(sdcp, buf, bytes, false);
+  if (sdc_lld_arm_dma(sdcp, buf, bytes, false) == true)
+    goto error;
 
   sdcp->sdio->DCTRL = CH32_SDIO_DCTRL_DTDIR |
                       CH32_SDIO_DCTRL_DBLOCKSIZE(9) |
@@ -1102,7 +1114,8 @@ static bool sdc_lld_write_aligned(SDCDriver *sdcp, uint32_t startblk,
 
   /* Arm the channel only now: RM SDIO requires the command to be
      answered before the data path can start pushing the FIFO.*/
-  sdc_lld_arm_dma(sdcp, buf, bytes, true);
+  if (sdc_lld_arm_dma(sdcp, buf, bytes, true) == true)
+    goto error;
 
   sdcp->sdio->DCTRL = CH32_SDIO_DCTRL_DBLOCKSIZE(9) |
                       CH32_SDIO_DCTRL_DMAEN |

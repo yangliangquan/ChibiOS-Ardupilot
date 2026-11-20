@@ -205,6 +205,7 @@ static msg_t spi_lld_get_dma(SPIDriver *spip, uint32_t rxstream,
   spip->dmarx = ch32DmaStreamAllocI(rxstream, priority,
                                     (ch32_dmaisr_t)spi_lld_serve_rx_interrupt,
                                     (void *)spip);
+  osalDbgAssert(spip->dmarx != NULL, "SPI RX DMA channel not available");
   if (spip->dmarx == NULL) {
     return HAL_RET_NO_RESOURCE;
   }
@@ -212,6 +213,7 @@ static msg_t spi_lld_get_dma(SPIDriver *spip, uint32_t rxstream,
   spip->dmatx = ch32DmaStreamAllocI(txstream, priority,
                                     (ch32_dmaisr_t)spi_lld_serve_tx_interrupt,
                                     (void *)spip);
+  osalDbgAssert(spip->dmatx != NULL, "SPI TX DMA channel not available");
   if (spip->dmatx == NULL) {
     ch32DmaStreamFreeI(spip->dmarx);
     spip->dmarx = NULL;
@@ -435,19 +437,27 @@ msg_t spi_lld_start(SPIDriver *spip) {
 void spi_lld_stop(SPIDriver *spip) {
 
   /* Stopping TX DMA then waiting for the current frame completion.*/
-  ch32DmaStreamDisable(spip->dmatx);
+  if (spip->dmatx != NULL) {
+    ch32DmaStreamDisable(spip->dmatx);
+  }
   while ((spip->spi->STATR & CH32_SPI_BSY) != 0U) {
   }
 
   /* Stopping RX DMA and the peripheral.*/
-  ch32DmaStreamDisable(spip->dmarx);
+  if (spip->dmarx != NULL) {
+    ch32DmaStreamDisable(spip->dmarx);
+  }
   spip->spi->CTLR2 = 0U;
   spip->spi->CTLR1 &= (uint16_t)~CH32_SPI_SPE;
 
-  ch32DmaStreamFreeI(spip->dmatx);
-  ch32DmaStreamFreeI(spip->dmarx);
-  spip->dmarx = NULL;
-  spip->dmatx = NULL;
+  if (spip->dmatx != NULL) {
+    ch32DmaStreamFreeI(spip->dmatx);
+    spip->dmatx = NULL;
+  }
+  if (spip->dmarx != NULL) {
+    ch32DmaStreamFreeI(spip->dmarx);
+    spip->dmarx = NULL;
+  }
 
   unit_disable(spip->spi);
 }
@@ -461,6 +471,10 @@ static msg_t start_transfer(SPIDriver *spip,
                             void *rxbuf) {
 
   osalDbgAssert(n <= CH32_DMA_MAX_TRANSFER, "unsupported DMA transfer size");
+
+  if ((spip->dmarx == NULL) || (spip->dmatx == NULL)) {
+    return HAL_RET_NO_RESOURCE;
+  }
 
   /* Receive side, a dummy sink is used when the data is to be discarded.*/
   if (rxbuf != NULL) {
@@ -544,6 +558,10 @@ msg_t spi_lld_receive(SPIDriver *spip, size_t n, void *rxbuf) {
  * @notapi
  */
 msg_t spi_lld_stop_transfer(SPIDriver *spip, size_t *sizep) {
+
+  if ((spip->dmarx == NULL) || (spip->dmatx == NULL)) {
+    return HAL_RET_NO_RESOURCE;
+  }
 
   /* Stopping TX DMA.*/
   ch32DmaStreamDisable(spip->dmatx);

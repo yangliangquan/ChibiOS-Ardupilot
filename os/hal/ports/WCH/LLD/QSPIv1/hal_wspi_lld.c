@@ -460,6 +460,11 @@ void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
                    size_t n, const uint8_t *txbuf) {
   QSPI_TypeDef *q = wspip->qspi;
 
+  osalDbgAssert(wspip->dma != NULL, "WSPI DMA channel not allocated");
+  if (wspip->dma == NULL) {
+    return;
+  }
+
   begin_frame(wspip);
 
   /* Closes the previous data frame's channel: CNTR must be zero and EN
@@ -490,6 +495,11 @@ void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
 void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
                       size_t n, uint8_t *rxbuf) {
   QSPI_TypeDef *q = wspip->qspi;
+
+  osalDbgAssert(wspip->dma != NULL, "WSPI DMA channel not allocated");
+  if (wspip->dma == NULL) {
+    return;
+  }
 
   begin_frame(wspip);
 

@@ -428,8 +428,12 @@ static void uart_enter_rx_idle_loop(UARTDriver *uartp) {
  */
 static void usart_stop(UARTDriver *uartp) {
 
-  ch32DmaStreamDisable(uartp->dmarx);
-  ch32DmaStreamDisable(uartp->dmatx);
+  if (uartp->dmarx != NULL) {
+    ch32DmaStreamDisable(uartp->dmarx);
+  }
+  if (uartp->dmatx != NULL) {
+    ch32DmaStreamDisable(uartp->dmatx);
+  }
 
   uartp->usart->CTLR1 = 0U;
   uartp->usart->CTLR2 = 0U;
@@ -792,6 +796,7 @@ msg_t uart_lld_start(UARTDriver *uartp) {
     uartp->dmarx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, dmaprio,
                                        (ch32_dmaisr_t)uart_lld_serve_rx_end_irq,
                                        (void *)uartp);
+    osalDbgAssert(uartp->dmarx != NULL, "UART RX DMA channel not available");
     if (uartp->dmarx == NULL) {
       return HAL_RET_NO_RESOURCE;
     }
@@ -799,6 +804,7 @@ msg_t uart_lld_start(UARTDriver *uartp) {
     uartp->dmatx = ch32DmaStreamAllocI(CH32_DMA_STREAM_ID_ANY, dmaprio,
                                        (ch32_dmaisr_t)uart_lld_serve_tx_end_irq,
                                        (void *)uartp);
+    osalDbgAssert(uartp->dmatx != NULL, "UART TX DMA channel not available");
     if (uartp->dmatx == NULL) {
       ch32DmaStreamFreeI(uartp->dmarx);
       uartp->dmarx = NULL;
@@ -858,6 +864,11 @@ void uart_lld_stop(UARTDriver *uartp) {
  */
 void uart_lld_start_send(UARTDriver *uartp, size_t n, const void *txbuf) {
 
+  osalDbgAssert(uartp->dmatx != NULL, "UART TX DMA channel not allocated");
+  if (uartp->dmatx == NULL) {
+    return;
+  }
+
   /* TX DMA channel preparation.*/
   ch32DmaStreamSetMemory0(uartp->dmatx, txbuf);
   ch32DmaStreamSetTransactionSize(uartp->dmatx, n);
@@ -897,6 +908,10 @@ void uart_lld_start_send(UARTDriver *uartp, size_t n, const void *txbuf) {
 size_t uart_lld_stop_send(UARTDriver *uartp) {
   size_t n;
 
+  if (uartp->dmatx == NULL) {
+    return 0U;
+  }
+
   ch32DmaStreamDisable(uartp->dmatx);
   n = ch32DmaStreamGetTransactionSize(uartp->dmatx);
 
@@ -915,6 +930,11 @@ size_t uart_lld_stop_send(UARTDriver *uartp) {
  * @notapi
  */
 void uart_lld_start_receive(UARTDriver *uartp, size_t n, void *rxbuf) {
+
+  osalDbgAssert(uartp->dmarx != NULL, "UART RX DMA channel not allocated");
+  if (uartp->dmarx == NULL) {
+    return;
+  }
 
   /* Stopping previous activity (idle state).*/
   ch32DmaStreamDisable(uartp->dmarx);
@@ -943,6 +963,10 @@ void uart_lld_start_receive(UARTDriver *uartp, size_t n, void *rxbuf) {
  */
 size_t uart_lld_stop_receive(UARTDriver *uartp) {
   size_t n;
+
+  if (uartp->dmarx == NULL) {
+    return 0U;
+  }
 
   ch32DmaStreamDisable(uartp->dmarx);
   n = ch32DmaStreamGetTransactionSize(uartp->dmarx);

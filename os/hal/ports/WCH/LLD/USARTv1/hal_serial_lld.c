@@ -147,17 +147,21 @@ static void serve_interrupt(SerialDriver *sdp) {
   uint32_t cr1 = u->CTLR1;
   uint32_t errs = 0U;
 
-  /* Reception, F1-style sequence: SR read then DATAR read. */
-  if ((sr & USART_STATR_RXNE) != 0U) {
+  /* Reception, F1-style sequence: SR read then DATAR read. DATAR is also
+     read for IDLE and line errors, those flags are cleared by the SR/DR
+     sequence and would otherwise keep the interrupt asserted forever. */
+  if ((sr & (USART_STATR_RXNE | USART_STATR_IDLE | USART_STATR_ORE |
+             USART_STATR_FE | USART_STATR_NE | USART_STATR_PE)) != 0U) {
     uint16_t data = (uint16_t)u->DATAR;
 
-    osalSysLockFromISR();
-    if (iqPutI(&sdp->iqueue, (msg_t)data) < MSG_OK) {
-      errs |= SD_OVERRUN_ERROR;
+    if ((sr & USART_STATR_RXNE) != 0U) {
+      osalSysLockFromISR();
+      if (iqPutI(&sdp->iqueue, (msg_t)data) < MSG_OK) {
+        errs |= SD_OVERRUN_ERROR;
+      }
+      osalSysUnlockFromISR();
     }
-    osalSysUnlockFromISR();
   }
-
   /* Transmission, buffer empty. */
   if (((cr1 & USART_CTLR_TXEIE) != 0U) && ((sr & USART_STATR_TXE) != 0U)) {
     msg_t b;

@@ -217,6 +217,9 @@ typedef uint32_t adcerror_t;
 /* External declarations.                                                    */
 /*===========================================================================*/
 
+/* Enhanced API, adc_lld_start() returns an operation status.*/
+#define ADC_LLD_ENHANCED_API
+
 #if (CH32H417_ADC_USE_ADC1 == TRUE) && !defined(__DOXYGEN__)
 extern ADCDriver ADCD1;
 #endif
@@ -228,7 +231,7 @@ extern ADCDriver ADCD2;
 extern "C" {
 #endif
   void adc_lld_init(void);
-  void adc_lld_start(ADCDriver *adcp);
+  msg_t adc_lld_start(ADCDriver *adcp);
   void adc_lld_stop(ADCDriver *adcp);
   void adc_lld_start_conversion(ADCDriver *adcp);
   void adc_lld_stop_conversion(ADCDriver *adcp);
