@@ -83,6 +83,24 @@
 #endif
 
 /**
+ * @brief   Inline-assembly RAM areas initialization switch.
+ * @details When TRUE the three RAM areas are copied/zeroed by inline
+ *          assembly loops right here instead of by crt1's
+ *          __init_ram_areas().  The inline loops take every address from
+ *          the instruction stream (la of the __ramN_*__ linker symbols),
+ *          so the boot path never reads a relocation table from the
+ *          cacheable flash window: crt1's const table lives in .rodata
+ *          and could be served stale by the instruction/opcache after a
+ *          soft reset that follows a flash reprogramming.  Requires the
+ *          __ram0..2_init_text__/init/clear/noinit linker symbols (both
+ *          common_ch32.ld and common_ch32_boot.ld define them) and
+ *          4-aligned area boundaries (both scripts ALIGN(4) every area).
+ */
+#if !defined(CRT0_ASM_RAM_AREAS) || defined(__DOXYGEN__)
+#define CRT0_ASM_RAM_AREAS                  FALSE
+#endif
+
+/**
  * @brief   .text relocation switch (text runs from ITCM).
  * @note    The hook calls below use "call" instead of "jal": with
  *          .text in ITCM the targets are ~536MB away, outside the
@@ -258,17 +276,23 @@ _crt0_entry:
     /*
      * cache_strtg_ctlr (0xBC2): instruction cache master switch plus the
      * per address space strategies, composed at the top of this file.
-     * Done before the .text copy so that the flash-resident startup code
-     * is already fetched through the cache; the array is invalidated
-     * first so that no line survives the strategy change (same order as
-     * the WCH startup).
+     * The array must be invalidated with the cache DISABLED: an
+     * invalidation written while the array was still enabled did not
+     * stick on this core (stale lines of a previous boot survived a
+     * soft reset and fed the RAM-area relocation a stale table), so the
+     * disable -> invalidate -> enable order below is mandatory.  A
+     * fence.i orders the change into the instruction stream before any
+     * further fetch.
      */
 #if PORT_RISCV_ICACHE_ENABLE
+    li      t0, (1 | CACHE_STRTG_CTLR_IC_DISABLE)
+    csrw    CSR_CACHE_STRTG_CTLR, t0
     li      t0, (OPCACHE_CTLR_IDX_MODE_ADDR | OPCACHE_CTLR_OP_ICACHE_INVAL)
     csrw    CSR_OPCACHE_CTLR, t0
-#endif
     li      t0, ICACHE_CTLR_VALUE
     csrw    CSR_CACHE_STRTG_CTLR, t0
+    fence.i
+#endif
 
     /*
      * inestcr (0xBC1): maximum nesting level. Must match
@@ -395,8 +419,38 @@ endbloop:
 #endif
 
 #if CRT0_INIT_RAM_AREAS == TRUE
-    /* RAM areas initialization.*/
+    /* RAM areas initialization. */
+#if CRT0_ASM_RAM_AREAS == TRUE
+    /* Inline relocation: copy __ramN_init_text__.. into
+       __ramN_init__..__ramN_clear__, zero __ramN_clear__..__ramN_noinit__.
+       Word steps: every area boundary is ALIGN(4)-ed by the linker
+       scripts, so all ranges are multiples of four bytes. */
+    .macro  CRT0_RAM_AREA_INIT name
+    la      t0, __\name\()_init_text__
+    la      t1, __\name\()_init__
+    la      t2, __\name\()_clear__
+    la      t3, __\name\()_noinit__
+1:  bgeu    t1, t2, 2f
+    lw      t4, 0(t0)
+    sw      t4, 0(t1)
+    addi    t0, t0, 4
+    addi    t1, t1, 4
+    j       1b
+2:  bgeu    t1, t3, 3f
+    sw      zero, 0(t1)
+    addi    t1, t1, 4
+    j       2b
+3:
+    .endm
+    CRT0_RAM_AREA_INIT ram0
+    CRT0_RAM_AREA_INIT ram1
+    CRT0_RAM_AREA_INIT ram2
+    /* The ITCM/DTCM copies now hold executable code: sync the
+       instruction stream before anything is called from them. */
+    fence.i
+#else
     call    __init_ram_areas
+#endif
 #endif
 
     /* All RAM images (data/bss/ram areas) are in place: order the
