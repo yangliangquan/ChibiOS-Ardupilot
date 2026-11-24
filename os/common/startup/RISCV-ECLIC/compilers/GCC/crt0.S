@@ -358,6 +358,49 @@ textloop:
 endtextloop:
     fence.i
 
+#if CRT0_INIT_RAM_AREAS == TRUE
+    /* RAM areas initialization.  This must precede every C hook call:
+       __core_init/__early_init and anything they reach may live in the
+       relocated areas (e.g. .sram_init) and the ECLIC vector table /
+       save areas (__riscv_save_0) are only valid after the copy. */
+#if CRT0_ASM_RAM_AREAS == TRUE
+    /* Inline relocation: copy __ramN_init_text__.. into
+       __ramN_init__..__ramN_clear__, zero __ramN_clear__..__ramN_noinit__.
+       Word steps: every area boundary is ALIGN(4)-ed by the linker
+       scripts, so all ranges are multiples of four bytes. */
+    .macro  CRT0_RAM_AREA_INIT name
+    la      t0, __\name\()_init_text__
+    la      t1, __\name\()_init__
+    la      t2, __\name\()_clear__
+    la      t3, __\name\()_noinit__
+1:  bgeu    t1, t2, 2f
+    lw      t4, 0(t0)
+    sw      t4, 0(t1)
+    addi    t0, t0, 4
+    addi    t1, t1, 4
+    j       1b
+2:  bgeu    t1, t3, 3f
+    sw      zero, 0(t1)
+    addi    t1, t1, 4
+    j       2b
+3:
+    .endm
+    CRT0_RAM_AREA_INIT ram0
+    CRT0_RAM_AREA_INIT ram1
+    CRT0_RAM_AREA_INIT ram2
+    /* The ITCM/DTCM copies now hold executable code: sync the
+       instruction stream before anything is called from them. */
+    fence.i
+#else
+    call    __init_ram_areas
+#endif
+#endif
+
+    /* Order the out-of-order V5F core's buffered stores before any code
+       runs from the relocated areas (RM ch4.1 recommends explicit
+       fences).  data/bss below are ordered by the second fence. */
+    fence   iorw, iorw
+
 #if CRT0_INIT_CORE == TRUE
     /* Core initialization.*/
     call    __core_init
@@ -422,44 +465,8 @@ bloop:
 endbloop:
 #endif
 
-#if CRT0_INIT_RAM_AREAS == TRUE
-    /* RAM areas initialization. */
-#if CRT0_ASM_RAM_AREAS == TRUE
-    /* Inline relocation: copy __ramN_init_text__.. into
-       __ramN_init__..__ramN_clear__, zero __ramN_clear__..__ramN_noinit__.
-       Word steps: every area boundary is ALIGN(4)-ed by the linker
-       scripts, so all ranges are multiples of four bytes. */
-    .macro  CRT0_RAM_AREA_INIT name
-    la      t0, __\name\()_init_text__
-    la      t1, __\name\()_init__
-    la      t2, __\name\()_clear__
-    la      t3, __\name\()_noinit__
-1:  bgeu    t1, t2, 2f
-    lw      t4, 0(t0)
-    sw      t4, 0(t1)
-    addi    t0, t0, 4
-    addi    t1, t1, 4
-    j       1b
-2:  bgeu    t1, t3, 3f
-    sw      zero, 0(t1)
-    addi    t1, t1, 4
-    j       2b
-3:
-    .endm
-    CRT0_RAM_AREA_INIT ram0
-    CRT0_RAM_AREA_INIT ram1
-    CRT0_RAM_AREA_INIT ram2
-    /* The ITCM/DTCM copies now hold executable code: sync the
-       instruction stream before anything is called from them. */
-    fence.i
-#else
-    call    __init_ram_areas
-#endif
-#endif
-
-    /* All RAM images (data/bss/ram areas) are in place: order the
-       out-of-order V5F core's buffered stores before any C code runs
-       from them (RM ch4.1 recommends explicit fences). */
+    /* All RAM images (data/bss) are in place: order the buffered
+       stores before C code uses them. */
     fence   iorw, iorw
 
     /* Late initialization..*/
