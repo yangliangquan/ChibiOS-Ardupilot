@@ -95,20 +95,24 @@
  *          __ram0..2_init_text__/init/clear/noinit linker symbols (both
  *          common_ch32.ld and common_ch32_boot.ld define them) and
  *          4-aligned area boundaries (both scripts ALIGN(4) every area).
+ *          Define FALSE to fall back to crt1.c's __init_ram_areas().
  */
 #if !defined(CRT0_ASM_RAM_AREAS) || defined(__DOXYGEN__)
-#define CRT0_ASM_RAM_AREAS                  FALSE
+#define CRT0_ASM_RAM_AREAS                  TRUE
 #endif
 
 /**
- * @brief   .text relocation switch (text runs from ITCM).
+ * @brief   .text relocation (text runs from ITCM).
+ * @details Always compiled.  The copy loop is guarded at run time by
+ *          __text_lma != __text_base__: images that link .text with a
+ *          run address equal to the load address (XIP from CodeFlash
+ *          or QSPI, common_ch32.ld) skip it, images that link .text
+ *          into ITCM (common_ch32_boot.ld) copy it.  No build-time
+ *          switch is needed.
  * @note    The hook calls below use "call" instead of "jal": with
  *          .text in ITCM the targets are ~536MB away, outside the
  *          +-1MB range of JAL ("call" is auipc+jalr, +-2GB).
  */
-#if !defined(CRT0_INIT_TEXT) || defined(__DOXYGEN__)
-#define CRT0_INIT_TEXT                      TRUE
-#endif
 
 /**
  * @brief   Constructors invocation switch.
@@ -334,15 +338,16 @@ _crt0_entry:
     /* Enable mcycle and minstret counters */
     csrci   CSR_MCOUNTINHIBIT, 0x5
 
-#if CRT0_INIT_TEXT == TRUE
     /* Copy the .text image from its flash load address to the run
        address (ITCM) and synchronize the instruction stream. This
        must precede every C call: crt0 lives in .crt0/.vectors
        (flash) while all C functions run from the copied image.
-       Half-word steps keep it safe for RVC-aligned sections. */
+       Half-word steps keep it safe for RVC-aligned sections.
+       XIP images (VMA == LMA) take the beq exit. */
     la      a0, __text_lma
     la      a1, __text_base__
     la      a2, __text_end__
+    beq     a0, a1, endtextloop
     bgeu    a1, a2, endtextloop
 textloop:
     lhu     t0, 0(a0)
@@ -352,7 +357,6 @@ textloop:
     bltu    a1, a2, textloop
 endtextloop:
     fence.i
-#endif
 
 #if CRT0_INIT_CORE == TRUE
     /* Core initialization.*/
