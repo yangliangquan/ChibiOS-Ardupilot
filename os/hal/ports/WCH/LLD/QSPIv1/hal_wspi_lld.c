@@ -65,6 +65,7 @@
 #define CH32_QSPI_CCR_FMODE_WRITE           (0UL << 26)
 #define CH32_QSPI_CCR_FMODE_READ            (1UL << 26)
 #define CH32_QSPI_CCR_FMODE_MMAP            (3UL << 26)
+#define CH32_QSPI_CCR_FMODE_MASK            (3UL << 26)
 
 /* Bit 1 of each phase mode field (IMODE bit9, ADMODE bit11, ABMODE bit15,
    DMODE bit25): set for both the two-line and the four-line encodings. */
@@ -83,16 +84,29 @@
 
 /**
  * @brief   DMA service routine for the channels owned by this driver.
- * @note    Completion comes from the QSPI interrupt, this only exists
- *          because the stream allocation requires a callback.
+ * @note    The word wide DMA leaves the sub-word tail of transmit frames in
+ *          memory. It is written to DR byte by byte here, on completion, so
+ *          the shift register appends it after the words already queued.
+ *          Frame completion still comes from the QSPI interrupt.
  *
  * @param[in] p         driver instance passed as callback argument
  * @param[in] flags     DMA interrupt flags
  */
 static __FASTRAMFUNC__ void wspi_lld_serve_dma_interrupt(void *p, uint32_t flags) {
+  WSPIDriver *wspip = (WSPIDriver *)p;
 
-  (void)p;
-  (void)flags;
+  if ((flags & CH32_DMA_ISR_TCIF) != 0U) {
+    if (wspip->txtail > 0U) {
+      volatile uint8_t *dr = (volatile uint8_t *)&wspip->qspi->DR;
+      const uint8_t *src = wspip->txbuf;
+      size_t i;
+
+      for (i = 0U; i < wspip->txtail; i++) {
+        *dr = src[i];
+      }
+      wspip->txtail = 0U;
+    }
+  }
 }
 
 /**
@@ -244,14 +258,45 @@ static void serve_interrupt(WSPIDriver *wspip) {
 
   q->FCR = CH32_QSPI_CTCF | CH32_QSPI_CTEF | CH32_QSPI_CTOF;
 
+  if ((q->CCR & CH32_QSPI_CCR_FMODE_MASK) == CH32_QSPI_CCR_FMODE_MMAP) {
+    wspip->rxbuf = NULL;
+    return;
+  }
+
   /* Completion wins over the error flags: the abort preceding every frame
      is acknowledged by a TCF too, so TEF can accompany a frame that ran
-     correctly. Leftover FIFO bytes and the BUSY bit are settled by the
-     abort that opens the next frame, in thread context. */
+     correctly. */
   if ((sr & CH32_QSPI_TCF) != 0U) {
+    
+    if ((wspip->rxbuf != NULL) && (wspip->dma != NULL) &&
+        ((q->CCR & CH32_QSPI_CCR_FMODE_MASK) == CH32_QSPI_CCR_FMODE_READ)) {
+      uint32_t flevel;
+      uint32_t remaining;
+      uint8_t *p;
+
+      /* Freeze the channel so CNTR stops changing while the tail is read. */
+      ch32DmaStreamDisable(wspip->dma);
+      remaining = ch32DmaStreamGetTransactionSize(wspip->dma);
+      if (remaining > wspip->rxwords) {
+        remaining = wspip->rxwords;
+      }
+      flevel = (q->SR & CH32_QSPI_FLEVEL) >> 8U;
+      p = wspip->rxbuf + ((wspip->rxwords - remaining) * 4U);
+
+      {
+        volatile uint8_t *dr = (volatile uint8_t *)&q->DR;
+        while (flevel > 0U) {
+          *p++ = *dr;
+          flevel--;
+        }
+      }
+      ch32DmaStreamSetTransactionSize(wspip->dma, 0U);
+      wspip->rxbuf = NULL;
+    }
     _wspi_isr_code(wspip);
   }
   else if ((sr & (CH32_QSPI_TEF | CH32_QSPI_TOF)) != 0U) {
+    wspip->rxbuf = NULL;
     _wspi_error_code(wspip);
   }
 }
@@ -307,7 +352,7 @@ void wspi_lld_init(void) {
   wspiObjectInit(&WSPID1);
   WSPID1.dma = NULL;
   WSPID1.dmamode = CH32_DMA_CFGR_PL(CH32H417_WSPI_QSPI1_DMA_PRIORITY) |
-                   CH32_DMA_CFGR_PSIZE_BYTE | CH32_DMA_CFGR_MSIZE_BYTE |
+                   CH32_DMA_CFGR_PSIZE_WORD | CH32_DMA_CFGR_MSIZE_WORD |
                    CH32_DMA_CFGR_MINC;
   NVIC_SetPriority(QSPI1_IRQn,
                    (uint8_t)CH32_IRQ_PRIORITY(CH32H417_WSPI_QSPI1_IRQ_PRIORITY));
@@ -317,7 +362,7 @@ void wspi_lld_init(void) {
   wspiObjectInit(&WSPID2);
   WSPID2.dma = NULL;
   WSPID2.dmamode = CH32_DMA_CFGR_PL(CH32H417_WSPI_QSPI2_DMA_PRIORITY) |
-                   CH32_DMA_CFGR_PSIZE_BYTE | CH32_DMA_CFGR_MSIZE_BYTE |
+                   CH32_DMA_CFGR_PSIZE_WORD | CH32_DMA_CFGR_MSIZE_WORD |
                    CH32_DMA_CFGR_MINC;
   NVIC_SetPriority(QSPI2_IRQn,
                    (uint8_t)CH32_IRQ_PRIORITY(CH32H417_WSPI_QSPI2_IRQ_PRIORITY));
@@ -396,6 +441,10 @@ void wspi_lld_start(WSPIDriver *wspip) {
  */
 void wspi_lld_stop(WSPIDriver *wspip) {
 
+  /* A timed out frame may have left the RX context behind, it must not be
+     picked up by a completion landing after the unit is clocked off. */
+  wspip->rxbuf = NULL;
+
   if (wspip->state == WSPI_READY) {
     /* Interrupts are disabled first: the abort below raises a completion
        flag and the handler would resume a thread that is not waiting, which
@@ -438,6 +487,7 @@ void wspi_lld_command(WSPIDriver *wspip, const wspi_command_t *cmdp) {
      flash (RM 37.4.5). DLR=0 keeps the frame at the instruction phase plus
      one byte slot. */
   begin_frame(wspip);
+  wspip->rxbuf = NULL;
   q->CR &= (uint32_t)~CH32_QSPI_DMAEN;
   q->CR |= CH32_QSPI_IE_MASK;
   q->DLR = 0U;
@@ -459,26 +509,59 @@ void wspi_lld_send(WSPIDriver *wspip, const wspi_command_t *cmdp,
     return;
   }
 
+  size_t nwords = n / 4U;
+
+  osalDbgAssert(n > 0U, "zero length WSPI TX frame");
+  if (n == 0U) {
+    return;
+  }
+
   begin_frame(wspip);
+  wspip->rxbuf = NULL;
 
   /* Closes the previous data frame's channel: CNTR must be zero and EN
      low before the transaction is reprogrammed. */
   dma_shutdown(wspip);
 
-  ch32DmaStreamSetMemory0(wspip->dma, txbuf);
-  ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);
-  ch32DmaStreamSetMode(wspip->dma, wspip->dmamode |
-                                   CH32_DMA_CFGR_DIR_M2P);
+  /* Whole words go through the DMA, the sub-word tail is written to DR by
+     the transfer complete callback. A frame shorter than one word raises
+     no DMA request, so it is sent entirely in thread context. */
+  if (nwords > 0U) {
+    wspip->txbuf = txbuf + (nwords * 4U);
+    wspip->txtail = n & 3U;
 
-  q->CR |= CH32_QSPI_IE_MASK | CH32_QSPI_DMAEN;
-  q->DLR = (uint32_t)(n - 1U);
+    ch32DmaStreamSetMemory0(wspip->dma, txbuf);
+    ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)nwords);
+    ch32DmaStreamSetMode(wspip->dma, wspip->dmamode |
+                                     CH32_DMA_CFGR_DIR_M2P |
+                                     CH32_DMA_CFGR_TCIE);
 
-  /* Staging order as in the vendor library: CCR, AR, DLR, then the request
-     line and the channel, START last. The unit pauses the shift register
-     while the FIFO is empty (RM 37.3.3), so the channel may preload it. */
-  load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
-  ch32DmaStreamEnable(wspip->dma);
-  q->CR |= CH32_QSPI_START;
+    q->CR |= CH32_QSPI_IE_MASK | CH32_QSPI_DMAEN;
+    q->DLR = (uint32_t)(n - 1U);
+
+    /* Staging order as in the vendor library: CCR, AR, DLR, then the
+       request line and the channel, START last. The unit pauses the shift
+       register while the FIFO is empty (RM 37.3.3). */
+    load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
+    ch32DmaStreamEnable(wspip->dma);
+    q->CR |= CH32_QSPI_START;
+  }
+  else {
+    volatile uint8_t *dr;
+    size_t i;
+
+    wspip->txtail = 0U;
+    q->CR &= (uint32_t)~CH32_QSPI_DMAEN;
+    q->CR |= CH32_QSPI_IE_MASK;
+    q->DLR = (uint32_t)(n - 1U);
+    load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_WRITE);
+
+    dr = (volatile uint8_t *)&q->DR;
+    for (i = 0U; i < n; i++) {
+      *dr = txbuf[i];
+    }
+    q->CR |= CH32_QSPI_START;
+  }
 }
 
 /**
@@ -501,8 +584,15 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
      low before the transaction is reprogrammed. */
   dma_shutdown(wspip);
 
+  /* Whole words go through the DMA, the sub-word tail is drained by the
+     ISR. A transfer shorter than one word is entirely software driven. */
+  wspip->rxwords = n / 4U;
+  wspip->rxbuf = rxbuf;
+  osalDbgAssert((wspip->rxwords == 0U) ||
+                (((uint32_t)rxbuf & 3U) == 0U), "unaligned WSPI RX buffer");
+
   ch32DmaStreamSetMemory0(wspip->dma, rxbuf);
-  ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)n);
+  ch32DmaStreamSetTransactionSize(wspip->dma, (uint32_t)wspip->rxwords);
   ch32DmaStreamSetMode(wspip->dma, wspip->dmamode |
                                    CH32_DMA_CFGR_DIR_P2M);
 
@@ -510,7 +600,7 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
   q->DLR = (uint32_t)(n - 1U);
 
   /* The channel is live before the frame starts, each threshold crossing
-     raises a request and the DMA drains the FIFO until DLR is exhausted. */
+     raises a request and the DMA drains the FIFO a word at a time. */
   ch32DmaStreamEnable(wspip->dma);
   load_frame(wspip, cmdp, CH32_QSPI_CCR_FMODE_READ);
   q->CR |= CH32_QSPI_START;
@@ -525,6 +615,9 @@ void wspi_lld_receive(WSPIDriver *wspip, const wspi_command_t *cmdp,
 void wspi_lld_map_flash(WSPIDriver *wspip,
                         const wspi_command_t *cmdp,
                         uint8_t **addrp) {
+
+  /* No indirect frame is live once the window is open.*/
+  wspip->rxbuf = NULL;
 
   wait_idle(wspip);
 

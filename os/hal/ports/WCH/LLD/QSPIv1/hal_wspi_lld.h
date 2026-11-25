@@ -167,12 +167,13 @@
 
 /**
  * @brief   FIFO threshold (SR.FTF trigger level, bytes).
- * @note    The DMA request fires when FLEVEL is above this level, a
- *          threshold of zero requests on every available byte and is
- *          correct for any transfer length with byte wide DMA.
+ * @note    The DMA request fires when FLEVEL is above this level. A value
+ *          of three makes the unit accumulate one word before requesting,
+ *          matching the word wide DMA transfers. Bytes left in the FIFO
+ *          when the frame completes are drained by the ISR.
  */
 #if !defined(CH32H417_QSPI_FTHRES) || defined(__DOXYGEN__)
-#define CH32H417_QSPI_FTHRES                0U
+#define CH32H417_QSPI_FTHRES                3U
 #endif
 /** @} */
 
@@ -230,7 +231,13 @@
   /* Dynamically allocated channel owning the DR register.*/               \
   const ch32_dma_stream_t   *dma;                                            \
   /* DMA mode bits, the transfer direction is added per transfer.*/         \
-  uint32_t                  dmamode;
+  uint32_t                  dmamode;                                         \
+  /* Receive buffer and word count, used by the ISR tail drain.*/           \
+  uint8_t                   *rxbuf;                                          \
+  size_t                     rxwords;                                        \
+  /* Transmit tail, written byte wide by the DMA completion callback.*/     \
+  const uint8_t             *txbuf;                                          \
+  size_t                     txtail;
 
 /*===========================================================================*/
 /* External declarations.                                                    */
