@@ -145,21 +145,15 @@ static void abort_frame(WSPIDriver *wspip) {
 
 /**
  * @brief   Prepares the unit for a new frame.
- * @details A frame that completed normally leaves the bus idle and the FIFO
- *          empty, so the teardown only runs when the previous frame is still
- *          on the bus or left bytes behind; the flags are dropped either
- *          way. Back to back indirect frames skip the whole ABORT sequence.
+ * @details ABORT clears the FIFO and drops nCS on every frame boundary,
+ *          so a stale TCF from the previous abort can never be mistaken
+ *          for the completion of the frame armed right after.
  *
  * @notapi
  */
 static void begin_frame(WSPIDriver *wspip) {
-  QSPI_TypeDef *q = wspip->qspi;
 
-  if ((q->SR & (CH32_QSPI_BUSY | CH32_QSPI_FLEVEL)) != 0U) {
-    abort_frame(wspip);
-  }
-
-  q->FCR = CH32_QSPI_CTEF | CH32_QSPI_CTCF | CH32_QSPI_CTOF;
+  abort_frame(wspip);
 }
 
 /*===========================================================================*/

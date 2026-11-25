@@ -51,7 +51,7 @@ int main(void) {
   SystemInit();
 
   /* Start the V5F core at its flash image address. */
-  NVIC_WakeUp_V5F(0x00001000UL);
+  NVIC_WakeUp_V5F(0x00010000UL);
 
   /* V3F idles forever. */
   for (;;) {

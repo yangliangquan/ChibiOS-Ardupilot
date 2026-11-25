@@ -34,8 +34,10 @@
  *                              context is switched
  *          - test_console.c  : SD3 console, 1s status line (SERIAL)
  *          - test_sdc.c      : SDIO card read/write test every 5s
- *          - test_wspi.c     : QSPI2 flash erase/program/read validation
- *                              every 5s on the last 4KB scratch sector
+ *          - test_wspi.c     : QSPI2 read speed benchmark every 10s, a
+ *                              fixed 32KB region read through DMA and
+ *                              XIP word/half/byte loads at
+ *                              1/2/5/10/20/25/33/50/100 MHz SCK
  *          - test_adc.c      : ADC1 internal reference and temperature
  *                              sensor conversion every 1s
  *          - test_can.c      : CAN1 internal loopback, a standard and an
