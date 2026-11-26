@@ -36,7 +36,7 @@
 #define WSPI_READ_SIZE          32768U
 #define WSPI_READ_WORDS         (WSPI_READ_SIZE / 4U)
 #define WSPI_READ_HALVES        (WSPI_READ_SIZE / 2U)
-#define WSPI_READ_TIMEOUT       chTimeMS2I(10000U)
+#define WSPI_M2M_GUARD          10000000U
 
 static const uint32_t wspi_clocks[] = {
   1000000U, 2000000U, 5000000U, 10000000U,
@@ -54,6 +54,7 @@ static WSPIConfig wspi_config = {.end_cb = NULL,
 static uint8_t wspi_rbuf[WSPI_READ_SIZE] __attribute__((aligned(4)));
 
 static volatile uint32_t wspi_dma_us;
+static volatile bool wspi_dma_ok;
 static volatile uint32_t wspi_xip_word_us;
 static volatile uint32_t wspi_xip_half_us;
 static volatile uint32_t wspi_xip_byte_us;
@@ -92,34 +93,32 @@ static uint32_t wspi_us_since(systime_t t0) {
   return (uint32_t)chTimeI2US(chVTTimeElapsedSinceX(t0));
 }
 
-static msg_t wspi_receive_bounded(WSPIDriver *wspip,
-                                  const wspi_command_t *cmdp,
-                                  size_t n, uint8_t *rxbuf,
-                                  sysinterval_t timeout) {
-  msg_t msg;
-
-  osalSysLock();
-  wspiStartReceiveI(wspip, cmdp, n, rxbuf);
-  msg = osalThreadSuspendTimeoutS(&wspip->thread, timeout);
-  if (msg == MSG_TIMEOUT) {
-    wspip->state = WSPI_READY;
-  }
-  osalSysUnlock();
-
-  return msg;
-}
-
-static uint32_t wspi_bench_dma(WSPIDriver *wspip, msg_t *msgp) {
+static bool wspi_bench_dma(const uint8_t *mapaddr, uint32_t *us) {
+  const ch32_dma_stream_t *dmastp;
+  uint32_t guard;
   systime_t t0;
 
-  t0 = chVTGetSystemTimeX();
-  *msgp = wspi_receive_bounded(wspip, &cmd_quad_read, WSPI_READ_SIZE,
-                               wspi_rbuf, WSPI_READ_TIMEOUT);
-  if (*msgp != MSG_OK) {
-    return 0U;
+  dmastp = ch32DmaStreamAlloc(CH32_DMA_STREAM_ID_ANY, 8U, NULL, NULL);
+  if (dmastp == NULL) {
+    *us = 0U;
+    return false;
   }
 
-  return wspi_us_since(t0);
+  t0 = chVTGetSystemTimeX();
+  ch32DmaStartMemCopy(dmastp,
+                      CH32_DMA_CFGR_PSIZE_WORD | CH32_DMA_CFGR_MSIZE_WORD,
+                      mapaddr, wspi_rbuf, WSPI_READ_WORDS);
+
+  guard = WSPI_M2M_GUARD;
+  while ((dmastp->channel->CNTR > 0U) && (guard > 0U)) {
+    guard--;
+  }
+  *us = wspi_us_since(t0);
+
+  ch32DmaStreamDisable(dmastp);
+  ch32DmaStreamFree(dmastp);
+
+  return guard > 0U;
 }
 
 static uint32_t wspi_bench_xip_words(const uint8_t *mapaddr) {
@@ -226,8 +225,8 @@ static THD_FUNCTION(wspi_test_thd, arg) {
         uint32_t word_us;
         uint32_t half_us;
         uint32_t byte_us;
-        msg_t msg;
         uint8_t *mapaddr;
+        bool dma_ok;
 
         if (i > 0U) {
           wspiStop(&WSPID2);
@@ -235,23 +234,20 @@ static THD_FUNCTION(wspi_test_thd, arg) {
           (void)wspiStart(&WSPID2, &wspi_config);
         }
 
-        dma_us = wspi_bench_dma(&WSPID2, &msg);
-        wspi_dma_us = dma_us;
-        if (msg != MSG_OK) {
-          wspiStop(&WSPID2);
-          (void)wspiStart(&WSPID2, &wspi_config);
-        }
-
         chprintf(chp, "WSPI: sck %8u, ",
                  (unsigned)wspi_sck_hz(wspi_config.clock_hz));
-        wspi_report(chp, "dma", dma_us, msg == MSG_OK);
 
         wspiMapFlash(&WSPID2, &cmd_quad_read, &mapaddr);
         if (mapaddr == NULL) {
-          chprintf(chp, "xip32 FAILED, xip16 FAILED, xip8 FAILED\r\n");
+          chprintf(chp, "dma FAILED, xip32 FAILED, xip16 FAILED, xip8 FAILED\r\n");
           wspiUnmapFlash(&WSPID2);
           continue;
         }
+
+        dma_ok = wspi_bench_dma(mapaddr, &dma_us);
+        wspi_dma_us = dma_us;
+        wspi_dma_ok = dma_ok;
+        wspi_report(chp, "dma", dma_us, dma_ok);
 
         word_us = wspi_bench_xip_words(mapaddr);
         half_us = wspi_bench_xip_halves(mapaddr);
